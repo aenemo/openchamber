@@ -646,6 +646,7 @@ export const dict = {
   'sessions.sidebar.header.projectSort.zToA': 'Z → A',
   'sessions.sidebar.header.projectSort.dateAdded': 'Neueste',
   'sessions.sidebar.header.projectSort.recent': 'Kürzlich',
+  'sessions.sidebar.header.projectSort.leastRecent': 'Älteste',
   'sessions.sidebar.header.search.matchCountSingle': '{count} Treffer',
   'sessions.sidebar.header.search.matchCountPlural': '{count} Treffer',
   'sessions.sidebar.header.search.placeholder': 'Sitzungen durchsuchen...',

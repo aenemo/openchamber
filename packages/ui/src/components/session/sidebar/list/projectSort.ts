@@ -1,4 +1,29 @@
 import type { ProjectSortOrder } from '@/stores/useSessionDisplayStore';
+import type { I18nKey } from '@/lib/i18n';
+import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
+import { updateDesktopSettings } from '@/lib/persistence';
+
+export const PROJECT_SORT_ORDERS = [
+  'manual',
+  'a-z',
+  'z-a',
+  'date-added',
+  'recent',
+  'least-recent',
+] as const satisfies ReadonlyArray<ProjectSortOrder>;
+
+export const PROJECT_SORT_LABEL_KEYS = {
+  manual: 'sessions.sidebar.header.projectSort.manual',
+  'a-z': 'sessions.sidebar.header.projectSort.aToZ',
+  'z-a': 'sessions.sidebar.header.projectSort.zToA',
+  'date-added': 'sessions.sidebar.header.projectSort.dateAdded',
+  recent: 'sessions.sidebar.header.projectSort.recent',
+  'least-recent': 'sessions.sidebar.header.projectSort.leastRecent',
+} as const satisfies Record<ProjectSortOrder, I18nKey>;
+
+export const PROJECT_SORT_CHOICES = PROJECT_SORT_ORDERS.map(
+  (order) => [order, PROJECT_SORT_LABEL_KEYS[order]] as const,
+);
 
 type SortableProject = {
   id: string;
@@ -31,6 +56,9 @@ export const sortProjectsByOrder = <T extends SortableProject>(
     case 'recent':
       sorted.sort((left, right) => (right.lastOpenedAt ?? 0) - (left.lastOpenedAt ?? 0));
       break;
+    case 'least-recent':
+      sorted.sort((left, right) => (left.lastOpenedAt ?? 0) - (right.lastOpenedAt ?? 0));
+      break;
     case 'manual': {
       const rankById = new Map(manualOrder.map((id, index) => [id, index]));
       sorted.sort((left, right) => (rankById.get(left.id) ?? Infinity) - (rankById.get(right.id) ?? Infinity));
@@ -41,13 +69,34 @@ export const sortProjectsByOrder = <T extends SortableProject>(
   return sorted;
 };
 
+export const parseProjectSortOrder = (value: string): ProjectSortOrder | null =>
+  PROJECT_SORT_ORDERS.find((order) => order === value) ?? null;
+
+export const defaultPersistProjectSortOrder = (order: ProjectSortOrder): void => {
+  void updateDesktopSettings({ sidebarProjectSortOrder: order });
+};
+
+export const applyProjectSortOrder = (
+  value: string,
+  persist: (order: ProjectSortOrder) => void = defaultPersistProjectSortOrder,
+): boolean => {
+  const next = parseProjectSortOrder(value);
+  if (!next) return false;
+  useSessionDisplayStore.getState().setProjectSortOrder(next);
+  persist(next);
+  return true;
+};
+
+export const isActivityRankedOrder = (order: ProjectSortOrder): boolean =>
+  order === 'recent' || order === 'least-recent';
+
 export const rankByLatestActivity = <T>(
   items: readonly T[],
   order: ProjectSortOrder,
   projectIdOf: (item: T) => string,
   sessionsByProject: ReadonlyMap<string, ReadonlyArray<{ time: { updated: number } }>>,
 ): readonly T[] => {
-  if (order !== 'recent') return items;
+  if (!isActivityRankedOrder(order)) return items;
   const latest = (item: T): number => {
     let newest = 0;
     for (const session of sessionsByProject.get(projectIdOf(item)) ?? []) {
@@ -56,7 +105,7 @@ export const rankByLatestActivity = <T>(
     return newest;
   };
   const ranked = items.map((item) => ({ item, at: latest(item) }));
-  ranked.sort((left, right) => right.at - left.at);
+  ranked.sort((left, right) => order === 'recent' ? right.at - left.at : left.at - right.at);
   return ranked.map((entry) => entry.item);
 };
 

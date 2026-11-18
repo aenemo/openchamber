@@ -12,7 +12,7 @@ import type { WorktreeMetadata } from '@/types/worktree';
 import { createSessionOwnershipIndex } from '../sessions/sessionOwnership';
 import { normalizePath } from '../utils';
 import { partitionSidebarSessions } from './sessionCollection';
-import { orderByProjectRank, rankByLatestActivity, sortProjectsByOrder } from './projectSort';
+import { isActivityRankedOrder, orderByProjectRank, rankByLatestActivity, sortProjectsByOrder } from './projectSort';
 
 const NO_PROJECTS: ProjectEntry[] = [];
 const NO_IDS: string[] = [];
@@ -28,16 +28,16 @@ export const useProjectsInSidebarOrder = <T extends { id: string }>(
   const projects = useProjectsStore((state) => (enabled ? state.projects : NO_PROJECTS));
   const manualOrder = useProjectsStore((state) => (enabled ? state.manualProjectOrder : NO_IDS));
   const order = useSessionDisplayStore((state) => state.projectSortOrder);
-  const recent = enabled && order === 'recent';
-  const sessions = useGlobalSessionsStore((state) => (recent ? state.activeSessions : NO_SESSIONS));
-  const archivedSessions = useGlobalSessionsStore((state) => (recent ? state.archivedSessions : NO_SESSIONS));
-  const worktrees = useSessionUIStore((state) => (recent ? state.availableWorktreesByProject : NO_WORKTREES));
-  const openCodeProjects = useGlobalSyncStore((state) => (recent ? state.projects : NO_OPENCODE_PROJECTS));
-  const spaces = useSidebarSpaces(recent);
+  const activityRanked = enabled && isActivityRankedOrder(order);
+  const sessions = useGlobalSessionsStore((state) => (activityRanked ? state.activeSessions : NO_SESSIONS));
+  const archivedSessions = useGlobalSessionsStore((state) => (activityRanked ? state.archivedSessions : NO_SESSIONS));
+  const worktrees = useSessionUIStore((state) => (activityRanked ? state.availableWorktreesByProject : NO_WORKTREES));
+  const openCodeProjects = useGlobalSyncStore((state) => (activityRanked ? state.projects : NO_OPENCODE_PROJECTS));
+  const spaces = useSidebarSpaces(activityRanked);
 
   const orderKey = React.useMemo(() => {
     const sorted = sortProjectsByOrder(projects, order, manualOrder);
-    const ranked = recent
+    const ranked = activityRanked
       ? rankByLatestActivity(sorted, order, (project) => project.id, createSessionOwnershipIndex(
         partitionSidebarSessions(sessions, isVSCode).projectSessions,
         sorted.flatMap((project) => {
@@ -52,7 +52,7 @@ export const useProjectsInSidebarOrder = <T extends { id: string }>(
       ).sessionsByProject)
       : sorted;
     return ranked.map((project) => project.id).join('\n');
-  }, [archivedSessions, isVSCode, manualOrder, openCodeProjects, order, projects, recent, sessions, spaces, worktrees]);
+  }, [activityRanked, archivedSessions, isVSCode, manualOrder, openCodeProjects, order, projects, sessions, spaces, worktrees]);
   const rankById = React.useMemo(
     () => new Map(orderKey.split('\n').map((id, index) => [id, index])),
     [orderKey],

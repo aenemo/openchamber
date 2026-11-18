@@ -697,6 +697,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.header.projectSort.zToA': 'Z → A',
   'sessions.sidebar.header.projectSort.dateAdded': '新しい順',
   'sessions.sidebar.header.projectSort.recent': '最近',
+  'sessions.sidebar.header.projectSort.leastRecent': '古い順',
   'sessions.sidebar.header.search.matchCountSingle': '{count}件一致',
   'sessions.sidebar.header.search.matchCountPlural': '{count}件一致',
   'sessions.sidebar.header.search.placeholder': 'セッションを検索...',

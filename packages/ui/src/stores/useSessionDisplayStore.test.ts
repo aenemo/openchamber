@@ -39,7 +39,7 @@ describe('useSessionDisplayStore project sorting', () => {
     expect(migrated.projectSortOrder).toBe('manual');
   });
 
-  for (const projectSortOrder of ['manual', 'a-z', 'z-a', 'date-added'] as const) {
+  for (const projectSortOrder of ['manual', 'a-z', 'z-a', 'date-added', 'least-recent'] as const) {
     test(`preserves the v2 ${projectSortOrder} sort order`, () => {
       const migrated = migrateSessionDisplayState({ projectSortOrder }, 2);
 

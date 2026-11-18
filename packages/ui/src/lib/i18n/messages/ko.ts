@@ -697,6 +697,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.header.projectSort.zToA': 'Z → A',
   'sessions.sidebar.header.projectSort.dateAdded': '최신순',
   'sessions.sidebar.header.projectSort.recent': '최근',
+  'sessions.sidebar.header.projectSort.leastRecent': '오래된순',
   'sessions.sidebar.header.search.matchCountSingle': '{count}개 일치',
   'sessions.sidebar.header.search.matchCountPlural': '{count}개 일치',
   'sessions.sidebar.header.search.placeholder': '세션 검색…',

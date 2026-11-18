@@ -3,6 +3,9 @@ import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useProjectsInSidebarOrder } from '@/components/session/sidebar/list/useProjectsInSidebarOrder';
 import { useUIStore } from '@/stores/useUIStore';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { PROJECT_SORT_LABEL_KEYS, PROJECT_SORT_ORDERS, applyProjectSortOrder, defaultPersistProjectSortOrder, parseProjectSortOrder } from '@/components/session/sidebar/list/projectSort';
+import { useSessionDisplayStore, type ProjectSortOrder } from '@/stores/useSessionDisplayStore';
 import { SettingsSidebarLayout } from '@/components/sections/shared/SettingsSidebarLayout';
 import { SettingsSidebarItem } from '@/components/sections/shared/SettingsSidebarItem';
 import { Icon } from "@/components/icon/Icon";
@@ -14,7 +17,7 @@ import { useThemeSystem } from '@/contexts/useThemeSystem';
 import { useI18n } from '@/lib/i18n';
 import { SETTINGS_SECTION_TITLE_CLASS } from '@/components/sections/shared/SettingsSection';
 
-export const ProjectsSidebar: React.FC<{ onItemSelect?: () => void }> = ({ onItemSelect }) => {
+export const ProjectsSidebar: React.FC<{ onItemSelect?: () => void; persistSortOrder?: (order: ProjectSortOrder) => void }> = ({ onItemSelect, persistSortOrder = defaultPersistProjectSortOrder }) => {
   const { t } = useI18n();
   const projects = useProjectsInSidebarOrder(useProjectsStore((state) => state.projects));
   const selectedId = useUIStore((state) => state.settingsProjectsSelectedId);
@@ -22,6 +25,11 @@ export const ProjectsSidebar: React.FC<{ onItemSelect?: () => void }> = ({ onIte
   const { currentTheme } = useThemeSystem();
 
   const isVSCode = React.useMemo(() => isVSCodeRuntime(), []);
+
+  const projectSortOrder = useSessionDisplayStore((state) => state.projectSortOrder);
+  const handleSortChange = React.useCallback((value: string) => {
+    applyProjectSortOrder(value, persistSortOrder);
+  }, [persistSortOrder]);
 
   const handleAddProject = React.useCallback(() => {
     sessionEvents.requestDirectoryDialog();
@@ -48,18 +56,35 @@ export const ProjectsSidebar: React.FC<{ onItemSelect?: () => void }> = ({ onIte
           <h2 className={`${SETTINGS_SECTION_TITLE_CLASS} mb-3`}>{t('settings.page.projects.title')}</h2>
           <div className="flex items-center justify-between gap-2">
             <span className="typography-meta text-muted-foreground">{t('settings.projects.sidebar.total', { count: projects.length })}</span>
-            {!isVSCode && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 -my-1 text-muted-foreground"
-                onClick={handleAddProject}
-                aria-label={t('settings.projects.sidebar.actions.addProject')}
-              >
-                <Icon name="add" className="size-4" />
-              </Button>
-            )}
+            <div className="flex items-center gap-1">
+              <Select value={projectSortOrder} onValueChange={handleSortChange}>
+                <SelectTrigger className="max-w-[128px]" aria-label={t('sessions.sidebar.header.actions.sortProjects')}>
+                  <SelectValue>
+                    {(value: string | undefined) => {
+                      const order = value ? parseProjectSortOrder(value) : null;
+                      return order ? t(PROJECT_SORT_LABEL_KEYS[order]) : '';
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {PROJECT_SORT_ORDERS.map((order) => (
+                    <SelectItem key={order} value={order}>{t(PROJECT_SORT_LABEL_KEYS[order])}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!isVSCode && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 -my-1 text-muted-foreground"
+                  onClick={handleAddProject}
+                  aria-label={t('settings.projects.sidebar.actions.addProject')}
+                >
+                  <Icon name="add" className="size-4" />
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       }

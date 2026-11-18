@@ -697,6 +697,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.header.projectSort.zToA': 'Z → A',
   'sessions.sidebar.header.projectSort.dateAdded': '最新',
   'sessions.sidebar.header.projectSort.recent': '最近',
+  'sessions.sidebar.header.projectSort.leastRecent': '最早',
   'sessions.sidebar.header.search.matchCountSingle': '{count} 个匹配',
   'sessions.sidebar.header.search.matchCountPlural': '{count} 个匹配',
   'sessions.sidebar.header.search.placeholder': '搜索会话...',

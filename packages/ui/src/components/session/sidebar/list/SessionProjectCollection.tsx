@@ -48,7 +48,8 @@ import { SessionBulkActions } from '../folders/SessionBulkActions';
 import { useSessionFoldersStore } from '@/stores/useSessionFoldersStore';
 import { isWorkExpanded, type useSessionProjectViewState } from '../projects/useSessionProjectViewState';
 import { resolveSidebarGrouping, useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
-import { holdOrder, rankByLatestActivity } from './projectSort';
+import { holdOrder, isActivityRankedOrder, rankByLatestActivity } from './projectSort';
+import { useHeldProjectOrder } from './useHeldProjectOrder';
 import type { DeleteSessionConfirmState } from '../sessions/useSessionActions';
 import { useExpandedParents } from '../sessions/useExpandedParents';
 import { getChatsRootFromDirectory, isChatDirectoryPath } from '@/lib/chatDirectories';
@@ -449,12 +450,9 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     () => new Map(collection.orderedSessions.map((session, index) => [session.id, index])),
     [collection.orderedSessions],
   );
-  const [heldProjectOrder, setHeldProjectOrder] = React.useState<readonly string[] | null>(null);
   const shownProjectOrderRef = React.useRef<readonly string[]>([]);
-  const holdsProjectOrder = view.projectSortOrder === 'recent';
-  React.useEffect(() => {
-    if (!holdsProjectOrder) setHeldProjectOrder(null);
-  }, [holdsProjectOrder]);
+  const holdsProjectOrder = isActivityRankedOrder(view.projectSortOrder);
+  const { heldProjectOrder, recordHold } = useHeldProjectOrder(holdsProjectOrder, view.projectSortOrder);
   const orderedSectionsForRender = React.useMemo(() => {
     const ranked = rankByLatestActivity(sectionsForSidebarRender, view.projectSortOrder, (section) => section.project.id, ownership.sessionsByProject);
     return [...(heldProjectOrder && holdsProjectOrder ? holdOrder(ranked, heldProjectOrder, (section) => section.project.id) : ranked)];
@@ -1334,9 +1332,11 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
       <div
         className="contents"
         onPointerEnter={(event) => {
-          if (holdsProjectOrder && event.pointerType === 'mouse') setHeldProjectOrder(shownProjectOrderRef.current);
+          if (holdsProjectOrder && event.pointerType === 'mouse') {
+            recordHold(shownProjectOrderRef.current);
+          }
         }}
-        onPointerLeave={() => setHeldProjectOrder(null)}
+        onPointerLeave={() => recordHold(null)}
       >
         {view.renderList
           ? view.renderList({ model: scrollerModel, view: scrollerView, actions: scrollerActionSet })

@@ -252,6 +252,11 @@ describe('settings helpers', () => {
       sidebarShowChatsSection: false,
     });
     expect(helpers.sanitizeSettingsUpdate({
+      sidebarProjectSortOrder: 'least-recent',
+    })).toEqual({
+      sidebarProjectSortOrder: 'least-recent',
+    });
+    expect(helpers.sanitizeSettingsUpdate({
       sidebarProjectDisplayMode: 'grid',
       sidebarViewMode: 'grid',
       sidebarProjectSortOrder: 'random',

@@ -706,6 +706,7 @@ export const dict: Record<I18nKey, string> = {
   "sessions.sidebar.header.projectSort.zToA": "Z → A",
   "sessions.sidebar.header.projectSort.dateAdded": "Найновіші",
   "sessions.sidebar.header.projectSort.recent": "Нещодавні",
+  "sessions.sidebar.header.projectSort.leastRecent": "Найстаріші",
   "sessions.sidebar.header.search.matchCountSingle": "{count} збіг",
   "sessions.sidebar.header.search.matchCountPlural": "Збігів: {count}",
   "sessions.sidebar.header.search.placeholder": "Пошук сесій...",

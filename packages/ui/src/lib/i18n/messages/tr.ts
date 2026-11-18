@@ -621,6 +621,7 @@ export const dict = {
   'sessions.sidebar.header.projectSort.zToA': 'Z → A',
   'sessions.sidebar.header.projectSort.dateAdded': 'En yeni',
   'sessions.sidebar.header.projectSort.recent': 'Son kullanılanlar',
+  'sessions.sidebar.header.projectSort.leastRecent': 'En eskiler',
   'sessions.sidebar.header.search.matchCountSingle': '{count} eşleşme',
   'sessions.sidebar.header.search.matchCountPlural': '{count} eşleşme',
   'sessions.sidebar.header.search.placeholder': 'Session ara...',

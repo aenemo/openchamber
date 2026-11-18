@@ -13,7 +13,7 @@ import {
   type SidebarSectionEntry,
 } from '@/lib/sidebarSections';
 
-type ProjectSortOrder = 'manual' | 'a-z' | 'z-a' | 'date-added' | 'recent';
+type ProjectSortOrder = 'manual' | 'a-z' | 'z-a' | 'date-added' | 'recent' | 'least-recent';
 
 type SidebarViewMode = 'projects' | 'timeline';
 type ListSessionGrouping = 'project' | 'time';

@@ -615,6 +615,7 @@ export const dict = {
   'sessions.sidebar.header.projectSort.zToA': 'ת → א',
   'sessions.sidebar.header.projectSort.dateAdded': 'החדשים ביותר',
   'sessions.sidebar.header.projectSort.recent': 'אחרונים',
+  'sessions.sidebar.header.projectSort.leastRecent': 'הישנים ביותר',
   'sessions.sidebar.header.search.matchCountSingle': '{count} התאמה',
   'sessions.sidebar.header.search.matchCountPlural': '{count} התאמות',
   'sessions.sidebar.header.search.placeholder': 'חיפוש הפעלות…',

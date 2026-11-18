@@ -696,6 +696,7 @@ export const dict = {
   'sessions.sidebar.header.projectSort.zToA': 'Z → A',
   'sessions.sidebar.header.projectSort.dateAdded': 'Nieuwste',
   'sessions.sidebar.header.projectSort.recent': 'Recent',
+  'sessions.sidebar.header.projectSort.leastRecent': 'Oudste',
   'sessions.sidebar.header.search.matchCountSingle': '{count} treffer',
   'sessions.sidebar.header.search.matchCountPlural': '{count} treffers',
   'sessions.sidebar.header.search.placeholder': 'Sessies zoeken...',

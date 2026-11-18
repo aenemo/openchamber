@@ -529,6 +529,7 @@ export const dict = {
   'sessions.sidebar.header.projectSort.zToA': 'Z → A',
   'sessions.sidebar.header.projectSort.dateAdded': 'Les plus récentes',
   'sessions.sidebar.header.projectSort.recent': 'Récentes',
+  'sessions.sidebar.header.projectSort.leastRecent': 'Les plus anciens',
   'sessions.sidebar.header.search.matchCountSingle': 'Correspondance {count}',
   'sessions.sidebar.header.search.matchCountPlural': 'Correspondances {count}',
   'sessions.sidebar.header.search.placeholder': 'Rechercher des sessions...',

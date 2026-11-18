@@ -535,6 +535,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.header.projectSort.zToA': 'Z → A',
   'sessions.sidebar.header.projectSort.dateAdded': 'Najnowsze',
   'sessions.sidebar.header.projectSort.recent': 'Ostatnie',
+  'sessions.sidebar.header.projectSort.leastRecent': 'Najstarsze',
   'sessions.sidebar.header.search.matchCountSingle': '{count} dopasowanie',
   'sessions.sidebar.header.search.matchCountPlural': '{count} dopasowań',
   'sessions.sidebar.header.search.placeholder': 'Szukaj sesji...',

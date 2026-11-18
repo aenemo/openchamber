@@ -31,7 +31,7 @@ import { useSearchFailureText } from '@/components/search/searchStatusText';
 import type { ContentSearchStatus } from '@/hooks/useConversationSearch';
 import { searchScopeQuery, type SearchScope } from '@/lib/search/omniQuery';
 import type { SessionProjectListProps } from '@/components/session/sidebar/projects/SessionProjectScroller';
-import { sortProjectsByOrder } from '@/components/session/sidebar/list/projectSort';
+import { PROJECT_SORT_CHOICES, sortProjectsByOrder } from '@/components/session/sidebar/list/projectSort';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -94,13 +94,7 @@ type MobileSessionsSheetProps = {
   };
 };
 
-const PROJECT_SORT_OPTIONS = [
-  ['manual', 'sessions.sidebar.header.projectSort.manual'],
-  ['a-z', 'sessions.sidebar.header.projectSort.aToZ'],
-  ['z-a', 'sessions.sidebar.header.projectSort.zToA'],
-  ['date-added', 'sessions.sidebar.header.projectSort.dateAdded'],
-  ['recent', 'sessions.sidebar.header.projectSort.recent'],
-] as const;
+const PROJECT_SORT_OPTIONS = PROJECT_SORT_CHOICES;
 
 const GROUPING_OPTIONS = [
   ['project', 'sessions.sidebar.header.listGrouping.project'],

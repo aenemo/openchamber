@@ -46,6 +46,7 @@ import { useSidebarPages } from '../pages/useSidebarPages';
 import { SidebarPageRow } from '../pages/SidebarPageRow';
 import { isPinnedZoneRowKey, resolveSessionSidebarStickyHeader, type SessionSidebarRow, type SessionSidebarRowModel } from '../sessionSidebarRowModel';
 import { SortableProjectItem } from './sortableItems';
+import { ProjectCaptionSortMenu } from './projectCaptionSortMenu';
 import { WorktreeWorkRow } from '../works/WorktreeWorkRow';
 import { SessionDraftRow } from '../works/SessionDraftRow';
 import { isGroupWork } from '../works/sidebarWorks';
@@ -549,14 +550,16 @@ function SessionProjectScrollerComponent({ model, view, actions }: SessionProjec
     }
     if (row.kind === 'status') return renderStatus(row);
     if (row.kind === 'caption') {
-      return sortableSection(row, <SessionSidebarCaption
-        label={row.label}
-        preview={row.preview === true}
-        collapsed={row.collapsed}
-        alwaysShowActions={view.alwaysShowActions}
-        addsProjects={row.caption === 'projects'}
-        onToggle={() => toggleProjectsCaption(row, { model })}
-      />);
+      return sortableSection(row, <ProjectCaptionSortMenu caption={row.caption} mobileVariant={view.mobileVariant}>
+        <SessionSidebarCaption
+          label={row.label}
+          preview={row.preview === true}
+          collapsed={row.collapsed}
+          alwaysShowActions={view.alwaysShowActions}
+          addsProjects={row.caption === 'projects'}
+          onToggle={() => toggleProjectsCaption(row, { model })}
+        />
+      </ProjectCaptionSortMenu>);
     }
     if (row.emptyKind === 'sidebar') return model.emptyState;
     if (row.emptyKind === 'search') return model.searchEmptyState;

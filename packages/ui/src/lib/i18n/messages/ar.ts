@@ -616,6 +616,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.header.projectSort.zToA': 'ي → أ',
   'sessions.sidebar.header.projectSort.dateAdded': 'الأحدث',
   'sessions.sidebar.header.projectSort.recent': 'الأخيرة',
+  'sessions.sidebar.header.projectSort.leastRecent': 'الأقدم',
   'sessions.sidebar.header.search.matchCountSingle': '{count} نتيجة مطابقة',
   'sessions.sidebar.header.search.matchCountPlural': '{count} نتائج مطابقة',
   'sessions.sidebar.header.search.placeholder': 'البحث في الجلسات…',
