@@ -187,6 +187,10 @@ const ACTIONS = {
       writeFileSync(file, content)
     }
   },
+  async "storage.clear"(_step, ctx) {
+    const count = await ctx.page.evaluate("localStorage.clear(), localStorage.length")
+    if (count !== 0) fail(`localStorage still holds ${count} keys`)
+  },
   async "file.delete"(step, ctx) {
     rmSync(projectPath(ctx, step.path), { force: true })
   },

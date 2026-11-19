@@ -289,7 +289,7 @@ export const ProjectFolderHeader: React.FC<ProjectFolderHeaderProps> = ({
               />
               <Icon name="folder" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <span className="min-w-0 truncate typography-ui-label font-medium text-foreground" dir="auto">{folder.name}</span>
-              {projectCount > 0 ? <span className="shrink-0 typography-micro text-muted-foreground">{projectCount}</span> : null}
+              {projectCount > 0 ? <span data-project-folder-count className="shrink-0 typography-micro text-muted-foreground">{projectCount}</span> : null}
             </button>
           )}
           {renaming ? null : (
