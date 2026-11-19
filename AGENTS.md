@@ -59,6 +59,22 @@ Shared contracts must define intentional behavior for every applicable runtime: 
 - Enforce security and correctness in core/runtime logic, not only UI visibility or prompts.
 - Edit source files with the edit tool, never with a shell string replacement that interpolates escapes. Backtick-n written through `Set-Content`/`-replace` has landed literal text in this repository twice and once emptied a file; type-check only caught it afterwards.
 
+## Rules and Enforcement
+
+Each rule names what catches a violation, so a rule with nothing behind it is visible as such.
+
+| Rule | Caught by |
+|---|---|
+| Types, lint, dead code, anti-slop ratchet, file size | `bun run check:changed` (`scripts/check-changed.mjs`) |
+| A source file over 800 lines cannot grow | the file size step, which reads the base and the worktree |
+| A new finding under the ratcheted rules | the ratchet step, which counts findings per rule across the change |
+| What a user does still works | `bun run verify` scenarios in `scripts/verify/zones` |
+| Project folders survive the settings round-trip | `sync.list.project-folders` |
+| Settings helpers receive every project sanitizer | `createProjectListUpdate` throws a TypeError naming the missing one |
+| Do not edit UI source while a verify stand runs scenarios | none beyond the failing step and its page reload in the log |
+| Edit source files with the edit tool, never shell interpolation | none possible; type-check finds the damage afterwards |
+| Never add or log secrets | review only |
+
 ## Correctness Invariants
 
 - Prefer authoritative state over heuristics.
