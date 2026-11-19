@@ -1,14 +1,25 @@
-export const applyProjectListUpdate = (result, candidate, sanitizeProjects, sanitizeProjectFolders) => {
-  if (Array.isArray(candidate.projects)) {
-    const projects = sanitizeProjects(candidate.projects);
-    if (projects) {
-      result.projects = projects;
-    }
+const requireSanitizer = (value, name) => {
+  if (typeof value !== 'function') {
+    throw new TypeError(`createSettingsHelpers requires ${name}`);
   }
-  if (Array.isArray(candidate.projectFolders)) {
-    const projectFolders = sanitizeProjectFolders(candidate.projectFolders);
-    if (projectFolders) {
-      result.projectFolders = projectFolders;
+  return value;
+};
+
+export const createProjectListUpdate = (sanitizeProjects, sanitizeProjectFolders) => {
+  const sanitize = requireSanitizer(sanitizeProjects, 'sanitizeProjects');
+  const sanitizeFolders = requireSanitizer(sanitizeProjectFolders, 'sanitizeProjectFolders');
+  return (result, candidate) => {
+    if (Array.isArray(candidate.projects)) {
+      const projects = sanitize(candidate.projects);
+      if (projects) {
+        result.projects = projects;
+      }
     }
-  }
+    if (Array.isArray(candidate.projectFolders)) {
+      const projectFolders = sanitizeFolders(candidate.projectFolders);
+      if (projectFolders) {
+        result.projectFolders = projectFolders;
+      }
+    }
+  };
 };

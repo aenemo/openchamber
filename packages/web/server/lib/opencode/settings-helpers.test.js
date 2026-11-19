@@ -14,7 +14,7 @@ import { createSettingsNormalizationRuntime } from './settings-normalization-run
 const testFilePath = fileURLToPath(import.meta.url);
 const packagesWebDir = join(dirname(testFilePath), '..', '..', '..');
 
-const createTestHelpers = () => createSettingsHelpers({
+const stubDependencies = () => ({
   normalizePathForPersistence: (value) => value,
   normalizeDirectoryPath: (value) => value,
   normalizeTunnelBootstrapTtlMs: (value) => value,
@@ -30,6 +30,32 @@ const createTestHelpers = () => createSettingsHelpers({
   sanitizeModelRefs: () => undefined,
   sanitizeSkillCatalogs: () => undefined,
   sanitizeProjects: () => undefined,
+  sanitizeProjectFolders: () => undefined,
+});
+
+const createTestHelpers = () => createSettingsHelpers(stubDependencies());
+
+it('refuses to build without the project folder sanitizer', () => {
+  const { sanitizeProjectFolders, ...dependencies } = stubDependencies();
+  expect(sanitizeProjectFolders).toBeTypeOf('function');
+  expect(() => createSettingsHelpers(dependencies)).toThrow(/sanitizeProjectFolders/);
+});
+
+it('sanitizes project folders on the settings response, keeping known parents and clearing unknown ones', () => {
+  const helpers = createTestHelpersWithRealSanitizers();
+  const response = helpers.formatSettingsResponse({
+    projectFolders: [
+      { id: 'clients', name: 'Clients', parentId: null, createdAt: 1, updatedAt: 2 },
+      { id: 'child', name: 'Child', parentId: 'clients', createdAt: 1, updatedAt: 2 },
+      { id: 'orphan', name: 'Orphan', parentId: 'missing', createdAt: 1, updatedAt: 2 },
+      { id: 'clients', name: 'Duplicate', parentId: null, createdAt: 1, updatedAt: 2 },
+    ],
+  });
+  expect(response.projectFolders.map((folder) => [folder.id, folder.parentId])).toEqual([
+    ['clients', null],
+    ['child', 'clients'],
+    ['orphan', null],
+  ]);
 });
 
 const createTestHelpersWithRealSanitizers = () => {
@@ -64,7 +90,8 @@ const createTestHelpersWithRealSanitizers = () => {
     normalizeStringArray: runtime.normalizeStringArray,
     sanitizeModelRefs: runtime.sanitizeModelRefs,
     sanitizeSkillCatalogs: () => undefined,
-    sanitizeProjects: () => undefined,
+    sanitizeProjects: runtime.sanitizeProjects,
+    sanitizeProjectFolders: runtime.sanitizeProjectFolders,
   });
 };
 
