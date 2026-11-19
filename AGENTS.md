@@ -57,6 +57,7 @@ Shared contracts must define intentional behavior for every applicable runtime: 
 - Several agent sessions often work in the same checkout at once. Never `git stash` to compare against a clean tree or to test something: a stash takes every session's uncommitted work, and a session writing to a stashed file meanwhile makes the pop fail. Compare in a detached worktree instead (`git worktree add --detach /tmp/<name> HEAD`, with `node_modules` symlinked).
 - `changelog/` is read-only, and a fix, feature, or merged PR lands without a changelog line. Release notes are written only when the maintainer asks to update the changelog, through the `update-changelog` skill.
 - Enforce security and correctness in core/runtime logic, not only UI visibility or prompts.
+- Edit source files with the edit tool, never with a shell string replacement that interpolates escapes. Backtick-n written through `Set-Content`/`-replace` has landed literal text in this repository twice and once emptied a file; type-check only caught it afterwards.
 
 ## Correctness Invariants
 
