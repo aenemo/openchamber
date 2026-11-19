@@ -1,5 +1,6 @@
 import { useUIStore } from '@/stores/useUIStore';
 import type { SettingsSearchItem } from './search';
+import { PROJECT_FOLDER_SEARCH_ITEMS } from './search-project-folders';
 
 export const OPENCHAMBER_TOOLS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
   {
@@ -145,4 +146,5 @@ export const OPENCHAMBER_TOOLS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     keywords: ['workflow', 'workflows', 'approve', 'approval', 'auto', 'automatic', 'start', 'without asking', 'unattended', 'overnight'],
     isAvailable: (ctx) => !ctx.isVSCode && useUIStore.getState().agentWorkflowFeatureAvailable && useUIStore.getState().agentWorkflowToolEnabled,
   },
+  ...PROJECT_FOLDER_SEARCH_ITEMS,
 ];

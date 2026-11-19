@@ -152,6 +152,21 @@ describe('settings normalization runtime - symlink resolution', () => {
       expect(runtime.sanitizeProjects(JSON.parse(JSON.stringify(result)))).toEqual(result);
     });
 
+    it('keeps the folder link on a project and drops a blank one', () => {
+      const runtime = createTestRuntime();
+
+      const result = runtime.sanitizeProjects([
+        { id: 'proj1', path: '/a', folderId: 'clients' },
+        { id: 'proj2', path: '/b', folderId: '  ' },
+        { id: 'proj3', path: '/c' },
+      ]);
+
+      expect(result[0].folderId).toBe('clients');
+      expect(result[1].folderId).toBe(undefined);
+      expect(result[2].folderId).toBe(undefined);
+      expect(runtime.sanitizeProjects(JSON.parse(JSON.stringify(result)))).toEqual(result);
+    });
+
     it('deduplicates projects that resolve to the same realpath', () => {
       const runtime = createTestRuntime({
         realpathSync: (p) => p.startsWith('/symlink') ? '/real/project' : p,
@@ -166,6 +181,54 @@ describe('settings normalization runtime - symlink resolution', () => {
       const result = runtime.sanitizeProjects(projects);
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('proj1');
+    });
+  });
+
+  describe('sanitizeProjectFolders', () => {
+    it('keeps well-formed folders in order and drops malformed entries', () => {
+      const runtime = createTestRuntime();
+
+      const result = runtime.sanitizeProjectFolders([
+        { id: 'clients', name: 'Clients', parentId: null, createdAt: 10, updatedAt: 12 },
+        { id: 'infra', name: ' Infra ', parentId: 'clients' },
+        { id: '', name: 'Nameless' },
+        { id: 'empty', name: '   ' },
+        { id: 'long', name: 'x'.repeat(81) },
+        { id: 'clients', name: 'Duplicate' },
+        'not-an-object',
+      ]);
+
+      expect(result).toEqual([
+        { id: 'clients', name: 'Clients', parentId: null, createdAt: 10, updatedAt: 12 },
+        { id: 'infra', name: 'Infra', parentId: 'clients', createdAt: 0, updatedAt: 0 },
+        { id: 'long', name: 'x'.repeat(80), parentId: null, createdAt: 0, updatedAt: 0 },
+      ]);
+      expect(runtime.sanitizeProjectFolders(JSON.parse(JSON.stringify(result)))).toEqual(result);
+    });
+
+    it('lifts orphans to the root and breaks parent cycles', () => {
+      const runtime = createTestRuntime();
+
+      const result = runtime.sanitizeProjectFolders([
+        { id: 'orphan', name: 'Orphan', parentId: 'gone' },
+        { id: 'a', name: 'A', parentId: 'b' },
+        { id: 'b', name: 'B', parentId: 'a' },
+        { id: 'self', name: 'Self', parentId: 'self' },
+      ]);
+
+      expect(result.map((folder) => [folder.id, folder.parentId])).toEqual([
+        ['orphan', null],
+        ['a', null],
+        ['b', 'a'],
+        ['self', null],
+      ]);
+    });
+
+    it('returns undefined for a non-array document value', () => {
+      const runtime = createTestRuntime();
+
+      expect(runtime.sanitizeProjectFolders(undefined)).toBe(undefined);
+      expect(runtime.sanitizeProjectFolders(null)).toBe(undefined);
     });
   });
 

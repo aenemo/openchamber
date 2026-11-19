@@ -1,6 +1,7 @@
 import { z, type ZodType } from 'zod';
 
 import type { ProjectEntry } from '@/lib/api/types';
+import type { ProjectFolder } from '@/lib/projectFolders/tree';
 import { isCustomProviderIcon, type CustomProviderIcon } from '@/lib/customProviderIcons';
 import { customProviderLogoSchema, type CustomProviderLogo } from '@/lib/customProviderLogos';
 import { createProjectIdFromPath } from '@/lib/projectId';
@@ -346,6 +347,7 @@ const projectEntrySchema = z.object({
   addedAt: nonNegativeFinite.optional().catch(undefined),
   lastOpenedAt: nonNegativeFinite.optional().catch(undefined),
   sidebarCollapsed: z.boolean().optional().catch(undefined),
+  folderId: z.union([nonEmptyTrimmed, z.null()]).optional().catch(undefined),
   // external: #3552 Per-project model defaults must stay in this schema; omitting them stripped them from every settings response, so the store replaced the project list and reset the rename form mid-typing.
   defaultModel: nonEmptyTrimmed.optional().catch(undefined),
   defaultAgent: nonEmptyTrimmed.optional().catch(undefined),
@@ -380,10 +382,55 @@ export const parseProjects = fromSchema(
       if (parsed.data.defaultAgent) project.defaultAgent = parsed.data.defaultAgent;
       if (parsed.data.defaultVariant) project.defaultVariant = parsed.data.defaultVariant;
       if (parsed.data.sidebarCollapsed !== undefined) project.sidebarCollapsed = parsed.data.sidebarCollapsed;
+      if (parsed.data.folderId) project.folderId = parsed.data.folderId;
       result.push(project);
     }
     return result;
   }).refine((projects) => projects.length > 0),
+);
+
+const projectFolderSchema = z.object({
+  id: nonEmptyTrimmed,
+  name: trimmed.transform((value) => value.slice(0, 80)).pipe(z.string().min(1)),
+  parentId: z.union([nonEmptyTrimmed, z.null()]).optional().catch(undefined),
+  createdAt: nonNegativeFinite.transform(Math.round).optional().catch(undefined),
+  updatedAt: nonNegativeFinite.transform(Math.round).optional().catch(undefined),
+});
+
+export const parseProjectFolders = fromSchema(
+  z.array(z.unknown()).transform((entries) => {
+    const folders: ProjectFolder[] = [];
+    const seenIds = new Set<string>();
+    for (const entry of entries) {
+      const parsed = projectFolderSchema.safeParse(entry);
+      if (!parsed.success || seenIds.has(parsed.data.id)) continue;
+      seenIds.add(parsed.data.id);
+      folders.push({
+        id: parsed.data.id,
+        name: parsed.data.name,
+        parentId: parsed.data.parentId ?? null,
+        createdAt: parsed.data.createdAt ?? 0,
+        updatedAt: parsed.data.updatedAt ?? 0,
+      });
+    }
+    const byId = new Map(folders.map((folder) => [folder.id, folder]));
+    for (const folder of folders) {
+      if (folder.parentId && !byId.has(folder.parentId)) folder.parentId = null;
+    }
+    for (const folder of folders) {
+      const seen = new Set<string>([folder.id]);
+      let parentId = folder.parentId;
+      while (parentId) {
+        if (seen.has(parentId)) {
+          folder.parentId = null;
+          break;
+        }
+        seen.add(parentId);
+        parentId = byId.get(parentId)?.parentId ?? null;
+      }
+    }
+    return folders;
+  }),
 );
 
 const followUpBehaviorSchema = z.enum(['steer', 'queue']);

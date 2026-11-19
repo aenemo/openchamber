@@ -1699,6 +1699,24 @@ order, kept in the section, whatever the projects' sort; Projects sorts by
 hand only when sorted manually. Session rows only drop into folders: their copy
 follows the pointer, and nothing makes room.
 
+### Why project folders are an order of their own and not a sort
+
+Project folders nest projects only in the main Projects block: the row model
+draws a folder header above its member projects there, while single-project,
+main-workspace-only and search views stay flat. The folder order is the stored
+array order with no separate order state, and membership is the entry's
+`folderId`; an entry pointing at a folder the settings no longer list reads
+as ungrouped, so a deleted folder cannot strand a project. A project dropped
+on a folder header files it there through the same drop path as session
+folders, and the phone draws the same headers with its own rows.
+
+Deleting a folder keeps its child folders (maintainer decision 2026-11-19):
+the dialog says how many are kept, and they move to the target folder, or to
+the deleted folder's parent when its projects are closed. Only the deleted
+folder's own projects move or close, so closing a folder never closes a
+child's projects. Undo is offered only when projects moved, because closing
+destroys session scopes and spaces that the tree snapshot cannot restore.
+
 ### Why the list keeps the row the user sees and not the scroll position
 
 Rows above the viewport changed and the scroll position stayed, so whatever

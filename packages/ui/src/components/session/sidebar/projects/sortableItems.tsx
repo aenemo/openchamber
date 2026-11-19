@@ -7,14 +7,26 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Icon } from '@/components/icon/Icon';
 import { cn, getRevealLabelKey } from '@/lib/utils';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { toast } from '@/components/ui';
+import { buildProjectFolderTree, flattenProjectFolderTree, type ProjectFolder } from '@/lib/projectFolders/tree';
 import { PROJECT_ICON_MAP, resolveProjectColor, ProjectIconImage } from '@/lib/projectMeta';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
 import { useI18n } from '@/lib/i18n';
@@ -132,6 +144,9 @@ interface SortableProjectItemProps extends ProjectIdentityProps {
   onRenameStart: () => void;
   onArchiveAll?: () => void;
   onClose: () => void;
+  folderChoices?: readonly ProjectFolder[];
+  currentFolderId?: string | null;
+  onMoveToFolder?: (folderId: string | null) => void;
   children?: React.ReactNode;
   showCreateButtons?: boolean;
   hideHeader?: boolean;
@@ -169,6 +184,9 @@ export const SortableProjectItem: React.FC<SortableProjectItemProps> = ({
   onRenameStart,
   onArchiveAll,
   onClose,
+  folderChoices,
+  currentFolderId,
+  onMoveToFolder,
   children,
   showCreateButtons = true,
   hideHeader = false,
@@ -215,7 +233,52 @@ export const SortableProjectItem: React.FC<SortableProjectItemProps> = ({
       .catch(() => toast.error(t('sessions.sidebar.project.copyPath.error')));
   }, [projectDirectory, t]);
 
-  const renderProjectMenuItems = (Item: React.ElementType) => (
+  const folderTargets = React.useMemo(() => (
+    folderChoices ? flattenProjectFolderTree(buildProjectFolderTree(folderChoices, new Set())) : []
+  ), [folderChoices]);
+
+  const renderFolderMoveSubmenu = (
+    Item: React.ElementType,
+    Sub: React.ElementType,
+    SubTrigger: React.ElementType,
+    SubContent: React.ElementType,
+  ): React.ReactNode => {
+    if (!onMoveToFolder || !folderChoices) return null;
+    if (folderChoices.length === 0 && !currentFolderId) return null;
+    return (
+      <Sub>
+        <SubTrigger>
+          <Icon name="folder" className="me-1.5 h-4 w-4" />
+          {t('sessions.sidebar.folders.moveToFolder')}
+        </SubTrigger>
+        <SubContent className="max-h-[min(360px,var(--available-height))] overflow-y-auto">
+          {currentFolderId ? (
+            <Item onClick={() => onMoveToFolder(null)}>
+              <Icon name="folder-received" className="me-1.5 h-4 w-4" />
+              {t('sessions.sidebar.folders.removeFromFolder')}
+            </Item>
+          ) : null}
+          {folderTargets.map((node) => (
+            <Item
+              key={node.folder.id}
+              onClick={() => onMoveToFolder(node.folder.id)}
+              className="flex items-center justify-between"
+            >
+              <span className="min-w-0 truncate" dir="auto">
+                {'\u00a0\u00a0'.repeat(Math.min(node.depth, 8))}{node.folder.name}
+              </span>
+              {currentFolderId === node.folder.id ? <Icon name="check" className="h-4 w-4 shrink-0 text-primary" /> : null}
+            </Item>
+          ))}
+        </SubContent>
+      </Sub>
+    );
+  };
+
+  const renderProjectMenuItems = (
+    Item: React.ElementType,
+    sub: { Sub: React.ElementType; SubTrigger: React.ElementType; SubContent: React.ElementType } | null,
+  ) => (
     <>
       {showCreateButtons && !isRepo && !hideDirectoryControls && onNewSession && (
         <Item onClick={onNewSession}>
@@ -259,6 +322,7 @@ export const SortableProjectItem: React.FC<SortableProjectItemProps> = ({
           {t('sessions.sidebar.project.actions.copyPath')}
         </Item>
       )}
+      {sub ? renderFolderMoveSubmenu(Item, sub.Sub, sub.SubTrigger, sub.SubContent) : null}
       <Item onClick={onRenameStart}>
         <Icon name="pencil-ai" className="me-1.5 h-4 w-4" />
         {t('sessions.sidebar.project.actions.edit')}
@@ -474,7 +538,7 @@ export const SortableProjectItem: React.FC<SortableProjectItemProps> = ({
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="min-w-[180px]">
-                      {renderProjectMenuItems(DropdownMenuItem)}
+                      {renderProjectMenuItems(DropdownMenuItem, { Sub: DropdownMenuSub, SubTrigger: DropdownMenuSubTrigger, SubContent: DropdownMenuSubContent })}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 ) : null}
@@ -512,7 +576,7 @@ export const SortableProjectItem: React.FC<SortableProjectItemProps> = ({
             </div>
             </ContextMenuTrigger>
             <ContextMenuContent className="min-w-[180px]">
-              {renderProjectMenuItems(ContextMenuItem)}
+              {renderProjectMenuItems(ContextMenuItem, { Sub: ContextMenuSub, SubTrigger: ContextMenuSubTrigger, SubContent: ContextMenuSubContent })}
             </ContextMenuContent>
           </ContextMenu>
         </>

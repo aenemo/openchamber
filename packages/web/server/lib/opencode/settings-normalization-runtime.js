@@ -1,5 +1,6 @@
-export const createSettingsNormalizationRuntime = (dependencies) => {
-  const {
+import { asNonEmptyString, isRecord } from '../shared/guards.js';
+
+export const createSettingsNormalizationRuntime = (dependencies) => {  const {
     os,
     path,
     processLike,
@@ -253,10 +254,59 @@ export const createSettingsNormalizationRuntime = (dependencies) => {
         project.sidebarCollapsed = candidate.sidebarCollapsed;
       }
 
+      const folderId = asNonEmptyString(candidate.folderId) ?? '';
+      if (folderId) {
+        project.folderId = folderId;
+      }
+
       result.push(project);
     }
 
     return result;
+  };
+
+  const sanitizeProjectFolders = (input) => {
+    if (!Array.isArray(input)) {
+      return undefined;
+    }
+
+    const folders = [];
+    const seenIds = new Set();
+
+    for (const entry of input) {
+      if (!isRecord(entry)) continue;
+      const id = asNonEmptyString(entry.id);
+      const name = asNonEmptyString(entry.name)?.slice(0, 80);
+      if (!id || !name || seenIds.has(id)) continue;
+      seenIds.add(id);
+      folders.push({
+        id,
+        name,
+        parentId: asNonEmptyString(entry.parentId),
+        createdAt: Number.isFinite(entry.createdAt) && entry.createdAt >= 0 ? Math.round(entry.createdAt) : 0,
+        updatedAt: Number.isFinite(entry.updatedAt) && entry.updatedAt >= 0 ? Math.round(entry.updatedAt) : 0,
+      });
+    }
+
+    const byId = new Map(folders.map((folder) => [folder.id, folder]));
+    for (const folder of folders) {
+      if (folder.parentId && !byId.has(folder.parentId)) folder.parentId = null;
+    }
+    for (const folder of folders) {
+      const seen = new Set([folder.id]);
+      let parentId = folder.parentId;
+      while (parentId) {
+        if (seen.has(parentId)) {
+          folder.parentId = null;
+          break;
+        }
+        seen.add(parentId);
+        const parent = byId.get(parentId);
+        parentId = parent ? parent.parentId : null;
+      }
+    }
+
+    return folders;
   };
 
   const normalizeSettingsPaths = (input) => {
@@ -514,5 +564,6 @@ export const createSettingsNormalizationRuntime = (dependencies) => {
     sanitizeModelRefs,
     sanitizeSkillCatalogs,
     sanitizeProjects,
+    sanitizeProjectFolders,
   };
 };

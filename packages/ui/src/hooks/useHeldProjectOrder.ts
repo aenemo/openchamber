@@ -1,18 +1,20 @@
 import React from 'react';
 import type { ProjectSortOrder } from '@/stores/useSessionDisplayStore';
+import { isActivityRankedOrder } from '@/components/session/sidebar/list/projectSort';
 
-export const useHeldProjectOrder = (holdsOrder: boolean, order: ProjectSortOrder) => {
+export const useHeldProjectOrder = (order: ProjectSortOrder) => {
+  const holdsProjectOrder = isActivityRankedOrder(order);
   const [heldProjectOrder, setHeldProjectOrder] = React.useState<readonly string[] | null>(null);
   const heldOrderRef = React.useRef(order);
   React.useEffect(() => {
-    if (!holdsOrder || (heldProjectOrder && heldOrderRef.current !== order)) {
+    if (heldOrderRef.current !== order) {
       heldOrderRef.current = order;
       setHeldProjectOrder(null);
     }
-  }, [heldProjectOrder, holdsOrder, order]);
+  }, [order]);
   const recordHold = React.useCallback((ids: readonly string[] | null) => {
     heldOrderRef.current = order;
     setHeldProjectOrder(ids);
   }, [order]);
-  return { heldProjectOrder, recordHold };
+  return { heldProjectOrder, holdsProjectOrder, recordHold };
 };

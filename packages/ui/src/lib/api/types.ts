@@ -1335,8 +1335,8 @@ export interface ProjectEntry {
   addedAt?: number;
   lastOpenedAt?: number;
   sidebarCollapsed?: boolean;
+  folderId?: string | null;
 }
-
 export type SettingsPayload = DesktopSettings;
 
 export interface SettingsLoadResult {

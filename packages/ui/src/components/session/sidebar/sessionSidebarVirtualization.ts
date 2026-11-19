@@ -48,6 +48,7 @@ const rowUserState = (row: SessionSidebarRow): string | undefined => {
       return row.empty ? undefined : String(row.collapsed);
     case 'activity-header':
     case 'project-header':
+    case 'project-folder-header':
     case 'caption':
       return String(row.collapsed);
     case 'session':
@@ -109,7 +110,7 @@ const groupsInPlace = (
 };
 
 const isSectionHeader = (row: SessionSidebarRow): boolean => (
-  row.kind === 'project-header' || row.kind === 'activity-header' || row.kind === 'caption'
+  row.kind === 'project-header' || row.kind === 'project-folder-header' || row.kind === 'activity-header' || row.kind === 'caption'
 );
 
 const sectionsInPlace = (
@@ -210,14 +211,15 @@ const PROJECT_DIVIDER_CLASS = "after:pointer-events-none after:absolute after:st
 
 export const sectionWrapperClass = (row: SessionSidebarRow, nextRow: SessionSidebarRow | undefined, projectDivider = true): string => {
   const spacing = sectionSpacingAfter(row, nextRow);
-  if (projectDivider && spacing === 'pb-3' && nextRow?.kind === 'project-header') return `${spacing} ${PROJECT_DIVIDER_CLASS}`;
+  if (projectDivider && spacing === 'pb-3' && (nextRow?.kind === 'project-header' || nextRow?.kind === 'project-folder-header')) return `${spacing} ${PROJECT_DIVIDER_CLASS}`;
   return spacing ?? '';
 };
 
 export const sectionSpacingAfter = (row: SessionSidebarRow, nextRow: SessionSidebarRow | undefined): SectionSpacing | undefined => {
-  if (nextRow?.kind === 'project-header') {
+  if (nextRow?.kind === 'project-header' || nextRow?.kind === 'project-folder-header') {
     if (row.kind === 'caption') return undefined;
-    return row.kind === 'project-header' ? 'pb-0.5' : 'pb-3';
+    if (row.kind === 'project-header' || row.kind === 'project-folder-header') return 'pb-0.5';
+    return 'pb-3';
   }
   if (nextRow?.kind === 'activity-header' || nextRow?.kind === 'caption' || nextRow?.kind === 'search-archived-caption') return 'pb-4';
   return nextRow?.kind === 'group-header' && !isGroupWork(nextRow.group) && row.kind !== 'project-header' ? 'pb-1.5' : undefined;

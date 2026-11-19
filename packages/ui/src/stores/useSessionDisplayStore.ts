@@ -52,6 +52,7 @@ type SessionDisplayStore = {
   setHiddenSections: (ids: string[]) => void;
   showArchivedSessions: boolean;
   projectSortOrder: ProjectSortOrder;
+  collapsedProjectFolderIds: string[];
   setShowChatsSection: (show: boolean) => void;
   setShowWorkSection: (show: boolean) => void;
   setShowPinnedSection: (show: boolean) => void;
@@ -60,6 +61,8 @@ type SessionDisplayStore = {
   setShowArchivedSessions: (show: boolean) => void;
   toggleArchivedSessions: () => void;
   setProjectSortOrder: (order: ProjectSortOrder) => void;
+  setCollapsedProjectFolderIds: (ids: string[]) => void;
+  toggleCollapsedProjectFolder: (id: string) => void;
 };
 
 export const migrateSessionDisplayState = (
@@ -141,6 +144,7 @@ export const useSessionDisplayStore = create<SessionDisplayStore>()(
       setHiddenSections: (ids) => set({ hiddenSections: hiddenSidebarSectionsSchema.parse(ids), sectionsOwner: getRuntimeKey() }),
       showArchivedSessions: false,
       projectSortOrder: 'manual',
+    collapsedProjectFolderIds: [],
       setShowChatsSection: (show) => set({ showChatsSection: show }),
       setShowWorkSection: (show) => set({ showWorkSection: show }),
       setShowPinnedSection: (show) => set({ showPinnedSection: show }),
@@ -149,6 +153,12 @@ export const useSessionDisplayStore = create<SessionDisplayStore>()(
       setShowArchivedSessions: (show) => set({ showArchivedSessions: show }),
       toggleArchivedSessions: () => set((state) => ({ showArchivedSessions: !state.showArchivedSessions })),
       setProjectSortOrder: (order) => set({ projectSortOrder: order }),
+    setCollapsedProjectFolderIds: (ids) => set({ collapsedProjectFolderIds: [...new Set(ids)] }),
+    toggleCollapsedProjectFolder: (id) => set((state) => ({
+      collapsedProjectFolderIds: state.collapsedProjectFolderIds.includes(id)
+        ? state.collapsedProjectFolderIds.filter((entry) => entry !== id)
+        : [...state.collapsedProjectFolderIds, id],
+    })),
     }),
     {
       name: 'session-display-mode',

@@ -9,6 +9,7 @@ import { I18nProvider } from '@/lib/i18n';
 import type { Metadata, Session } from '@/lib/opencode/model';
 import { ChildStoreManager } from '@/sync/child-store';
 import { useProjectsStore } from '@/stores/useProjectsStore';
+import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useSourceBoardStore } from '@/stores/useSourceBoardStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { githubLikeDescriptor } from '@/lib/source-control/providers/descriptor.fixture';
@@ -160,8 +161,12 @@ describe('SessionGroupSection chip routing', () => {
     const originalProjects = useProjectsStore.getState().projects;
     const originalBoard = useSourceBoardStore.getState();
     const originalWorktrees = useSessionUIStore.getState().availableWorktreesByProject;
+    const originalDirectory = useDirectoryStore.getState().currentDirectory;
     useProjectsStore.setState({ projects: [PROJECT] });
     useSessionUIStore.setState({ availableWorktreesByProject: new Map() });
+    // The chip routes to the board only with no effective directory on screen.
+    // Other suites (caption menu) initialise the directory store, so pin it here.
+    useDirectoryStore.setState({ currentDirectory: '' });
     useSourceBoardStore.setState({
       focusRepositoryItem: (projectId, kind, query) => { boardFocus.push({ projectId, kind, query }); },
     });
@@ -191,6 +196,7 @@ describe('SessionGroupSection chip routing', () => {
       useProjectsStore.setState({ projects: originalProjects });
       useSessionUIStore.setState({ availableWorktreesByProject: originalWorktrees });
       useSourceBoardStore.setState({ focusRepositoryItem: originalBoard.focusRepositoryItem });
+      useDirectoryStore.setState({ currentDirectory: originalDirectory });
     }
   });
 });

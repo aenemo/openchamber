@@ -955,7 +955,7 @@ describe('settings registry gate', () => {
     themeId: 'openchamber-dark', locale: 'zh-CN', useSystemTheme: true, themeVariant: 'dark', lightThemeId: 'openchamber-light', darkThemeId: 'openchamber-dark',
     splashBgLight: '#fff', splashFgLight: '#000', splashBgDark: '#000', splashFgDark: '#fff',
     lastDirectory: '/home/testuser/project', homeDirectory: '/home/testuser', opencodeBinary: '/usr/local/bin/opencode',
-    projects: [{ id: 'p', path: '/home/testuser/project' }], activeProjectId: 'p',
+    projects: [{ id: 'p', path: '/home/testuser/project' }], activeProjectId: 'p', projectFolders: [{ id: 'f1', name: 'Clients', parentId: null, createdAt: 1, updatedAt: 2 }],
     securityScopedBookmarks: ['bookmark'], pinnedDirectories: ['/home/testuser/project'],
     desktopLanAccessEnabled: true, desktopKeepAwakeEnabled: true, desktopMinimizeToTrayEnabled: true, desktopUpdateChannel: 'canary', serverUpdateChannel: 'canary', desktopMacMenuBarEnabled: true, desktopLinuxNativeFrame: true, sidebarShowChatsSection: false, sidebarShowWorkSection: false, sidebarShowPinnedSection: true, sidebarDetailedZoneRows: true, sidebarWorktreeNameByBranch: true,
     desktopUiPassword: 'secret', githubClientId: 'client', githubScopes: 'repo', gitlabClientId: 'gitlab-client', skillCatalogs: [{ id: 'c', label: 'C', source: 'https://x' }],
@@ -1019,6 +1019,7 @@ describe('settings registry gate', () => {
       sanitizeModelRefs: (value) => value,
       sanitizeSkillCatalogs: (value) => value,
       sanitizeProjects: (value) => value,
+      sanitizeProjectFolders: (value) => value,
     });
     const missingFixture = persistableKeys.filter((key) => !(key in validValues));
     expect(missingFixture).toEqual([]);

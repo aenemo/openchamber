@@ -1,6 +1,10 @@
 import type { Session } from '@/lib/opencode/model';
 import { listedChildren } from './listedChildren';
 import type { SessionFolder, SessionFoldersMap } from '@/stores/useSessionFoldersStore';
+import type { ProjectFolder } from '@/lib/projectFolders/tree';
+import {
+  appendMaybeFolderedProjectSections, appendProjectSectionRows, appendProjectsCaption, type ProjectsCaption,
+} from './sessionSidebarRowModel.projectFolders';
 import { compareSessionsByLifecycleOrder, EMPTY_SESSION_ORDER_RANKS } from '@/sync/session-ordering';
 import { isSessionPinned } from '@/lib/sessionPins';
 import type { SessionGroup, SessionNode } from './types';
@@ -73,6 +77,7 @@ type RowBase = { key: string; estimateSize: number; treeGuides?: readonly Sessio
 export type SessionSidebarRow =
   | (RowBase & { kind: 'activity-header'; activityKey: SessionSidebarActivityKey; collapsed: boolean; label?: string; preview?: boolean; loading?: boolean })
   | (RowBase & { kind: 'project-header'; section: ProjectSection; collapsed: boolean })
+  | (RowBase & { kind: 'project-folder-header'; folder: ProjectFolder; depth: number; collapsed: boolean; projectCount: number })
   | (RowBase & { kind: 'caption'; caption: 'projects' | `section:${string}`; collapsed: boolean; label?: string; preview?: boolean })
   | (RowBase & { kind: 'group-header'; group: SessionGroup; groupKey: string; projectId: string | null; collapsed: boolean; empty: boolean; allSessions: readonly Session[]; depth: number; mixed: boolean; detailed: boolean })
   | (RowBase & { kind: 'folder-header'; depth: number; group: SessionGroup; folder: SessionFolder; displayName: string; scopeKey: string; scopeDirectory: string | null; ownerKey: string | null; nodes: readonly SessionNode[]; activityNodes: readonly SessionNode[]; projectId: string | null; archived: boolean; collapsed: boolean; empty: boolean; deleteSessions: readonly Session[]; subFolderCount: number; memberCount: number; dropEnabled: boolean; mixed: boolean })
@@ -140,6 +145,9 @@ export type SessionSidebarRowModelArgs = {
   collapsedGroups: ReadonlySet<string>;
   collapsedFolders: ReadonlySet<string>;
   collapsedActivities: ReadonlySet<string>;
+  projectFolders?: readonly ProjectFolder[];
+  collapsedProjectFolders?: ReadonlyArray<string> | ReadonlySet<string>;
+  projectFolderIdByProjectId?: ReadonlyMap<string, string | null>;
   expandedParents: ReadonlySet<string>;
   visibleCountByContainer: ReadonlyMap<string, number>;
   pinnedSessionIds: ReadonlySet<string>;
@@ -233,7 +241,8 @@ const STATUS_ESTIMATE = 28;
 const treeLevelOf = (row: SessionSidebarRow): number | null => {
   switch (row.kind) {
     case 'group-header': return row.depth;
-    case 'folder-header': return row.depth;
+    case 'folder-header':
+    case 'project-folder-header': return row.depth;
     case 'draft': return row.depth;
     case 'session':
     case 'run': return row.depth;
@@ -360,12 +369,12 @@ export const resolveSessionSidebarStickyHeader = (
   return result;
 };
 
-type WorktreeInFolder = { group: SessionGroup; groupKey: string };
+export type WorktreeInFolder = { group: SessionGroup; groupKey: string };
 type WorktreeEntry = { listedWorktree: WorktreeInFolder };
 type ListedEntry = SidebarEntry | WorktreeEntry;
 const isWorktreeEntry = (entry: ListedEntry): entry is WorktreeEntry => 'listedWorktree' in entry;
 
-type GroupPlacement = { keyPrefix: string; depth: number; mixed: boolean; foldersOnly?: boolean; zoneScopeKey?: string };
+export type GroupPlacement = { keyPrefix: string; depth: number; mixed: boolean; foldersOnly?: boolean; zoneScopeKey?: string };
 const PROJECT_PLACEMENT: GroupPlacement = { keyPrefix: '', depth: 0, mixed: false };
 
 export const buildSessionSidebarRowModel = (args: SessionSidebarRowModelArgs): SessionSidebarRowModel => {
@@ -1039,45 +1048,36 @@ export const buildSessionSidebarRowModel = (args: SessionSidebarRowModelArgs): S
     return worktreesByMemberId;
   };
 
+  const folderRowHost = {
+    args,
+    rows,
+    push,
+    stickyHeaders,
+    sectionHeaderEstimateSize: SECTION_HEADER_ESTIMATE,
+    projectsCaptionCollapseKey: PROJECTS_CAPTION_COLLAPSE_KEY,
+    projectPlacement: PROJECT_PLACEMENT,
+    movedGroupKeys,
+    collectFiledWorktrees,
+    appendGroup,
+  };
+
   const appendProjectSections = (
     projectSections: readonly ProjectSection[],
-    caption: { key: 'projects' | `section:${string}`; label?: string; preview?: boolean; always: boolean },
+    caption: ProjectsCaption,
   ): void => {
-    let captioned = !caption.always && (!args.projectsCaption || args.singleProjectMode || args.showOnlyMainWorkspace || (rows.length === 0 && !args.projectsCaptionAtTop));
     if (caption.always && projectSections.length === 0) {
       push({ kind: 'caption', key: `caption:${caption.key}`, estimateSize: SECTION_HEADER_ESTIMATE, caption: caption.key, collapsed: false, label: caption.label, preview: caption.preview });
       push({ kind: 'empty', key: `caption:${caption.key}:empty`, estimateSize: STATUS_ESTIMATE, emptyKind: 'section' });
       return;
     }
+    if (appendMaybeFolderedProjectSections(folderRowHost, projectSections, caption)) return;
+    let captioned = !caption.always && (!args.projectsCaption || args.singleProjectMode || args.showOnlyMainWorkspace || (rows.length === 0 && !args.projectsCaptionAtTop));
     for (const section of projectSections) {
-      const descriptors = buildGroupRenderDescriptors(section, { mainWorkspaceOnly: args.showOnlyMainWorkspace });
-      const projectCollapsed = !args.singleProjectMode && !args.showOnlyMainWorkspace && args.collapsedProjects.has(section.project.id);
       if (!captioned) {
         captioned = true;
-        const collapseKey = caption.key === 'projects' ? PROJECTS_CAPTION_COLLAPSE_KEY : caption.key;
-        const captionCollapsed = args.collapsedActivities.has(collapseKey);
-        push({ kind: 'caption', key: `caption:${caption.key}`, estimateSize: SECTION_HEADER_ESTIMATE, caption: caption.key, collapsed: captionCollapsed, label: caption.label, preview: caption.preview });
-        if (captionCollapsed) break;
+        if (appendProjectsCaption(folderRowHost, caption)) break;
       }
-      if (!args.showOnlyMainWorkspace) {
-        const rowIndex = rows.length;
-        push({ kind: 'project-header', key: `project:${section.project.id}:header`, estimateSize: SECTION_HEADER_ESTIMATE, section, collapsed: projectCollapsed });
-        stickyHeaders.push(Object.freeze({ rowIndex, kind: 'project', id: section.project.id }));
-      }
-      if (projectCollapsed) continue;
-      const worktreesByMemberId = collectFiledWorktrees(descriptors);
-      const filedGroupKeys = new Set([...worktreesByMemberId.values()].map((entry) => entry.groupKey));
-      const hasRootGroup = descriptors.some((descriptor) => descriptor.group.isMain);
-      const listedWorktrees = hasRootGroup ? descriptors
-        .filter((descriptor) => isGroupWork(descriptor.group)
-          && !movedGroupKeys.has(descriptor.groupKey) && !filedGroupKeys.has(descriptor.groupKey))
-        .map((descriptor): WorktreeInFolder => ({ group: descriptor.group, groupKey: descriptor.groupKey })) : [];
-      const listedGroupKeys = new Set(listedWorktrees.map((entry) => entry.groupKey));
-      for (const descriptor of descriptors) {
-        if (movedGroupKeys.has(descriptor.groupKey) || filedGroupKeys.has(descriptor.groupKey) || listedGroupKeys.has(descriptor.groupKey)) continue;
-        appendGroup(descriptor.group, descriptor.groupKey, descriptor.projectId, descriptor.hideGroupLabel, undefined, PROJECT_PLACEMENT,
-          descriptor.group.isMain ? worktreesByMemberId : undefined, descriptor.group.isMain ? listedWorktrees : undefined);
-      }
+      appendProjectSectionRows(folderRowHost, section);
     }
   };
 

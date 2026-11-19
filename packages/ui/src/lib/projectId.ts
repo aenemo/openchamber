@@ -17,6 +17,14 @@ export const createProjectIdFromPath = (projectPath: string): string => {
   return `path_${encoded}`;
 };
 
+export const createProjectFolderId = (): string => {
+  const randomUUID = globalThis.crypto?.randomUUID?.();
+  if (randomUUID) {
+    return `pfolder_${randomUUID}`;
+  }
+  return `pfolder_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+};
+
 export const projectPathFromId = (projectId: string): string => {
   if (!projectId.startsWith('path_')) {
     return '';

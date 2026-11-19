@@ -7,6 +7,7 @@ import { asNonEmptyString } from '../shared/guards.js';
 import { idleStopSchema } from '../spaces/idle-stop.js';
 import { sshHostSchema } from '../spaces/places/ssh-host.js';
 import { PROVIDER_LOGO_MIMES } from './provider-logo-routes.js';
+import { applyProjectListUpdate } from './project-folders.js';
 
 const settingsRegistry = createRequire(import.meta.url)('./settings-registry.json');
 
@@ -177,6 +178,7 @@ export const createSettingsHelpers = (dependencies) => {
     sanitizeModelRefs,
     sanitizeSkillCatalogs,
     sanitizeProjects,
+    sanitizeProjectFolders,
   } = dependencies;
 
   const PWA_APP_NAME_MAX_LENGTH = 64;
@@ -451,12 +453,7 @@ export const createSettingsHelpers = (dependencies) => {
     if (typeof candidate.desktopUiPassword === 'string') {
       result.desktopUiPassword = candidate.desktopUiPassword.trim();
     }
-    if (Array.isArray(candidate.projects)) {
-      const projects = sanitizeProjects(candidate.projects);
-      if (projects) {
-        result.projects = projects;
-      }
-    }
+    applyProjectListUpdate(result, candidate, sanitizeProjects, sanitizeProjectFolders);
     if (typeof candidate.activeProjectId === 'string' && candidate.activeProjectId.length > 0) {
       result.activeProjectId = candidate.activeProjectId;
     }

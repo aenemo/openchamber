@@ -364,7 +364,7 @@ const isUnsafeSkillRelativePath = (...args) => settingsNormalizationRuntime.isUn
 const normalizeStringArray = (...args) => settingsNormalizationRuntime.normalizeStringArray(...args);
 const sanitizeModelRefs = (...args) => settingsNormalizationRuntime.sanitizeModelRefs(...args);
 const sanitizeSkillCatalogs = (...args) => settingsNormalizationRuntime.sanitizeSkillCatalogs(...args);
-const sanitizeProjects = (...args) => settingsNormalizationRuntime.sanitizeProjects(...args);
+const { sanitizeProjects, sanitizeProjectFolders } = settingsNormalizationRuntime;
 
 const OPENCHAMBER_DEFAULT_CONFIG_ROOT = path.join(os.homedir(), '.config', 'openchamber');
 const OPENCHAMBER_USER_CONFIG_ROOT = process.env.OPENCHAMBER_DATA_DIR
@@ -469,7 +469,7 @@ const settingsHelpers = createSettingsHelpers({
   normalizeStringArray,
   sanitizeModelRefs,
   sanitizeSkillCatalogs,
-  sanitizeProjects,
+  sanitizeProjects, sanitizeProjectFolders,
 });
 
 const normalizePwaAppName = (...args) => settingsHelpers.normalizePwaAppName(...args);

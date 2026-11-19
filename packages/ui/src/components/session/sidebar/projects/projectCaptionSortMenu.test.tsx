@@ -67,13 +67,13 @@ const renderCaptionMenu = async (options: { caption?: string; mobileVariant?: bo
   return { openMenu, menuItems, toggleButton, toggled: () => toggled, persistCalls, cleanup };
 };
 
-test('right-clicking the projects caption lists the six sort orders and keeps left-click toggle', async () => {
+test('right-clicking the projects caption lists the six sort orders plus new folder and keeps left-click toggle', async () => {
   const menu = await renderCaptionMenu();
   try {
     await act(async () => { menu.toggleButton()?.click(); });
     expect(menu.toggled()).toBe(1);
     await menu.openMenu();
-    expect(menu.menuItems().length).toBe(6);
+    expect(menu.menuItems().length).toBe(7);
   } finally {
     await menu.cleanup();
   }
@@ -98,9 +98,31 @@ test('the caption menu checks the active sort order', async () => {
   try {
     await menu.openMenu();
     const items = menu.menuItems();
-    const checked = items.filter((item) => item.querySelector('svg') !== null);
-    expect(checked.length).toBe(1);
-    expect(items.indexOf(checked[0]!)).toBe(items.length - 1);
+    const oldest = items.filter((item) => item.textContent?.includes('Oldest'));
+    expect(oldest.length).toBe(1);
+    expect(oldest[0]?.querySelector('svg')).not.toBe(null);
+  } finally {
+    await menu.cleanup();
+  }
+});
+
+test('the caption menu creates a root project folder from its new folder item', async () => {
+  const menu = await renderCaptionMenu();
+  try {
+    const { useProjectsStore } = await import('@/stores/useProjectsStore');
+    const previous = useProjectsStore.getState();
+    try {
+      useProjectsStore.setState({ projects: [], activeProjectId: null, manualProjectOrder: [], projectFolders: [] });
+      await menu.openMenu();
+      const items = menu.menuItems();
+      await act(async () => { items[items.length - 1]?.click(); });
+      const folders = useProjectsStore.getState().projectFolders;
+      expect(folders.length).toBe(1);
+      expect(folders[0]?.name).toBe('New folder');
+      expect(folders[0]?.parentId).toBe(null);
+    } finally {
+      useProjectsStore.setState(previous, true);
+    }
   } finally {
     await menu.cleanup();
   }
@@ -170,7 +192,7 @@ test('right-clicking the section-wrapped projects caption opens the menu and sho
     await act(async () => {
       caption?.dispatchEvent(new Event('contextmenu', { bubbles: true, cancelable: true }));
     });
-    expect(Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).length).toBe(6);
+    expect(Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).length).toBe(7);
   } finally {
     await act(async () => root.unmount());
     container.remove();

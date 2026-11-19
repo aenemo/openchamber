@@ -1,4 +1,5 @@
 import type { ProjectEntry, TerminalShell } from '@/lib/api/types';
+import type { ProjectFolder } from '@/lib/projectFolders/tree';
 import type { DesktopWindowControlsPosition, DesktopWindowControlsStyle } from '@/lib/desktop';
 import { getDirectoryShowHidden, setDirectoryShowHidden } from '@/lib/directoryShowHidden';
 import { sanitizeStarterRefs, type DraftStarterRef } from '@/lib/draftStarters';
@@ -44,6 +45,7 @@ import {
   parseNullableTrimmedString,
   parseOneOf,
   parsePositiveInteger,
+  parseProjectFolders,
   parseProjects,
   parsePwaAppName,
   parseRecentEfforts,
@@ -190,6 +192,7 @@ export const SETTINGS_REGISTRY = {
   opencodeBinary: field({ scope: 'instance', parse: parseTrimmedString }),
   serverUpdateChannel: field({ scope: 'instance', surfaces: ['web'], parse: parseOneOf(['stable', 'canary']) }),
   projects: field<ProjectEntry[]>({ scope: 'instance', parse: parseProjects }),
+  projectFolders: field<ProjectFolder[]>({ scope: 'instance', parse: parseProjectFolders }),
   activeProjectId: field({ scope: 'instance', adopt: 'bootstrap-only', parse: parseNonEmptyString }),
   securityScopedBookmarks: field({ scope: 'instance', surfaces: ['desktop'], parse: parseStringList }),
   pinnedDirectories: field({ scope: 'instance', parse: parseStringSet }),
