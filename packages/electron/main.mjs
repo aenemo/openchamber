@@ -32,7 +32,7 @@ import { parseExternalUrl } from './external-url-policy.mjs';
 import { createBrowserPanelDriver } from './browser-panel-driver.mjs';
 import {
   BACKGROUND_START_ARG,
-  DEEP_LINK_PROTOCOL,
+  DEEP_LINK_PROTOCOL, APP_USER_MODEL_ID, desktopVariant,
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
   UI_PROTOCOL,
@@ -1312,7 +1312,7 @@ const maybeShowNativeNotification = (rawInput) => {
 
   const title = typeof payload.title === 'string' && payload.title.trim()
     ? payload.title.trim()
-    : 'OpenChamber';
+    : app.getName();
   const body = typeof payload.body === 'string' ? payload.body : '';
   const sessionId = typeof payload.sessionId === 'string' && payload.sessionId.trim()
     ? payload.sessionId.trim()
@@ -3856,7 +3856,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
 
     case 'desktop_get_launch_at_login': {
       if (process.platform === 'linux') {
-        return { supported: true, enabled: await readLinuxAutostartEnabled() };
+        return { supported: true, enabled: await readLinuxAutostartEnabled({ executableName: desktopVariant.executableName }) };
       }
       if (process.platform !== 'darwin' && process.platform !== 'win32') return { supported: false, enabled: false };
       const settings = app.getLoginItemSettings(getLoginItemOptions());
@@ -3868,7 +3868,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
         const enabled = args.enabled === true;
         return setLinuxAutostartEnabled({
           enabled,
-          appName: app.getName(),
+          appName: app.getName(), executableName: desktopVariant.executableName,
           backgroundArg: BACKGROUND_START_ARG,
         });
       }
@@ -4634,7 +4634,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
     }
 
     case 'desktop_check_for_updates': {
-      assertUpdaterCapability({ packaged: app.isPackaged });
+      assertUpdaterCapability({ packaged: app.isPackaged, appId: APP_USER_MODEL_ID });
       if (state.updateCheck && readUpdateChannel() !== state.updaterChannel) {
         await state.updateCheck.catch(() => null);
       }
@@ -4683,7 +4683,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
     }
 
     case 'desktop_download_and_install_update':
-      assertUpdaterCapability({ packaged: app.isPackaged });
+      assertUpdaterCapability({ packaged: app.isPackaged, appId: APP_USER_MODEL_ID });
       if (!state.pendingUpdate) {
         throw new Error('No pending update');
       }
@@ -4710,7 +4710,7 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
 
     case 'desktop_restart': {
       const applyUpdate = Boolean(state.pendingUpdate?.downloaded && app.isPackaged);
-      if (applyUpdate) assertUpdaterCapability({ packaged: app.isPackaged });
+      if (applyUpdate) assertUpdaterCapability({ packaged: app.isPackaged, appId: APP_USER_MODEL_ID });
       log.info(`[electron] desktop_restart applyUpdate=${applyUpdate} packaged=${app.isPackaged}`);
       if (applyUpdate && process.platform === 'darwin' && typeof app.isInApplicationsFolder === 'function') {
         try {
@@ -4985,7 +4985,7 @@ const buildMacMenu = (locale = 'en') => {
 
   return Menu.buildFromTemplate([
     {
-      label: t('app.name'),
+      label: app.getName(),
       submenu: [
         { label: t('about'), click: () => dispatchAction('about') },
         {
@@ -5091,7 +5091,7 @@ const buildAutoHiddenMenu = (locale = 'en') => {
 
   return Menu.buildFromTemplate([
     {
-      label: t('app.name'),
+      label: app.getName(),
       submenu: [
         { label: t('about'), click: () => dispatchAction('about') },
         {
@@ -5806,18 +5806,18 @@ app.whenReady().then(async () => {
 
   if (process.platform === 'linux' && app.isPackaged) {
     try {
-      const enabled = await readLinuxAutostartEnabled();
+      const enabled = await readLinuxAutostartEnabled({ executableName: desktopVariant.executableName });
       if (enabled) {
         await setLinuxAutostartEnabled({
           enabled: true,
-          appName: app.getName(),
+          appName: app.getName(), executableName: desktopVariant.executableName,
           backgroundArg: BACKGROUND_START_ARG,
         });
       }
     } catch (error) {
       log.warn('[electron] failed to reconcile Linux autostart entry', error);
     }
-    void reconcileAppImageDesktopEntry()
+    void reconcileAppImageDesktopEntry({ appName: desktopVariant.appName, executableName: desktopVariant.executableName })
       .then((result) => log.info('[electron] AppImage launcher entry', result))
       .catch((error) => log.warn('[electron] failed to reconcile AppImage launcher entry', error));
   }

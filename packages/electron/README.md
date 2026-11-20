@@ -208,6 +208,8 @@ IPC results if its endpoint changes while the read is pending.
 | `compile-cache.mjs` | Node's V8 code cache for the packaged main process: enabling it under userData, keeping it out of child environments, flushing and pruning after startup |
 | `packaged-runtime-config.mjs` | Runtime values for packaged application documents: the script that asks main for them, the check on the asking frame, and the blocking script and gate used while the first navigation runs ahead of the local server |
 | `early-startup.mjs` | Settings and window-state reading, splash markup, main-window options, the early window handoff and buffered app events; shared by both bundles. Its window icon in an unpackaged Windows run is `dev-icon.ico`, the Windows icon behind construction tape (source `resources/icons/dev-icon-win.svg`), so the taskbar tells a dev copy apart; Linux keeps the usual icon, because GNOME takes the dock icon from the installed app's `.desktop` entry |
+| `desktop-variant.mjs` | Build variant identity: the release values by default, and for `OPENCHAMBER_DESKTOP_VARIANT` the derived app name, appId, data directory and executable name, plus the reader for the variant baked into the packaged `package.json` |
+| `desktop-data-dir.mjs` | Gives dev and variant builds their own `OPENCHAMBER_DATA_DIR` (`~/.config/<name>`) through `assignInjectedEnv`, unless the environment already names one |
 | `main.mjs` | Electron main process, app lifecycle, windows, menus, deep links, native IPC handlers, updates, local server startup |
 | `electron-host-probe.mjs` | Chromium direct-host probes, identity checks, attempt deadlines, and response cleanup |
 | `host-probe-policy.mjs` | Selector fast attempt and unreachable-only retry policy |
@@ -233,7 +235,7 @@ IPC results if its endpoint changes while the read is pending.
 | `scripts/windows-executable.mjs` | Reads the CPU architecture of a Windows executable from its PE header |
 | `scripts/bundle-main.mjs` | Bundles Electron main code into `dist-bundle/{entry,main,early-startup}.mjs` for packaging |
 | `scripts/rebuild-native.mjs` | Rebuilds native modules against the Electron runtime |
-| `scripts/package.mjs` | Runs `electron-builder`, with unsigned Windows builds when signing env is missing. With `OPENCHAMBER_DESKTOP_CHANNEL=canary` it passes the configuration from `scripts/canary-build-config.mjs`, which swaps in the Canary icons |
+| `scripts/package.mjs` | Runs `electron-builder`, with unsigned Windows builds when signing env is missing. With `OPENCHAMBER_DESKTOP_CHANNEL=canary` it passes the configuration from `scripts/canary-build-config.mjs`, which swaps in the Canary icons. With `OPENCHAMBER_DESKTOP_VARIANT=<name>` it passes the configuration from `scripts/desktop-variant-build-config.mjs`, which builds a separately named local app (see *Packaging*); the two switches cannot be combined |
 | `scripts/windows-signpath.mjs` | Two-pass Windows build for SignPath signing, and the electron-builder sign hook it uses (see *Windows signing through SignPath*) |
 | `resources/` | Packaged web assets, icons, macOS entitlements, and the NSIS include for the Windows installer. Every file in `resources/icons` is written by `bun run brand:generate` (`scripts/brand`); do not edit them by hand. `resources/icons-canary` holds Canary's: its `AppIcon.icon` is hand-made, the rest is generated from it |
 
@@ -339,6 +341,48 @@ That runs, in order:
 6. `package.mjs` to run `electron-builder`; its `afterPack` hook stages the compiled macOS icon asset catalog and gives the macOS main executable its own UUID.
 
 Build output goes to `packages/electron/dist`.
+
+A variant build installs beside the release under its own name, for trying a
+local build without replacing the app you run:
+
+```bash
+OPENCHAMBER_DESKTOP_VARIANT=test bun run electron:build
+```
+
+On Windows, set it first in PowerShell: `$env:OPENCHAMBER_DESKTOP_VARIANT="test"; bun run electron:build`
+
+The variant name is a slug of lowercase letters, digits and single dashes, at
+most 32 characters, and it derives everything else: `test` builds "OpenChamber
+Test" with the app id `dev.openchamber.desktop.test`, its own profile
+(`%APPDATA%\OpenChamber Test`, `~/Library/Application Support/OpenChamber Test`
+on macOS, and a separate `openchamber-test` executable and desktop entry on
+Linux) and OpenChamber's data in `~/.config/openchamber-test`. Words title-case
+into the app name, so `beta-two` builds "OpenChamber Beta Two". The release keeps
+its name, install location, profile and data, so the two can be installed and run
+side by side. `OPENCHAMBER_DESKTOP_USER_DATA_DIR` and an explicit
+`OPENCHAMBER_DATA_DIR` still override the variant's directories.
+
+OpenCode's own data stays shared, because it belongs to OpenCode rather than the
+desktop shell: provider logins and past sessions are the same in both builds,
+while projects, settings, themes, extensions and chats start empty in the variant.
+On Linux the variant also gets its own XDG autostart file, AppImage launcher entry
+and window class, so launch at login and desktop integration stay per build.
+A variant build refuses update checks ("Updates are not available in a local
+variant build. Install the released app to receive updates."), since the release feed would replace it with the released app;
+its artifacts carry the variant name, so the release installer in `dist` stays as
+it was; the update manifests (`latest*.yml`) do not, and are regenerated by
+whichever local build ran last. Both builds register `openchamber://`, so deep links open whichever one
+was installed last.
+
+`scripts/package.mjs` applies `scripts/desktop-variant-build-config.mjs`, which
+renames the product, appId and Linux identity in a generated config and keeps
+everything else, including the release icons and the `publish` configuration.
+The build bakes the variant into the packaged `package.json` as
+`openchamberDesktopVariant`, and `early-startup.mjs` reads it at launch, so the
+installed app keeps its identity without the build environment. The variant
+cannot be combined with `OPENCHAMBER_DESKTOP_CHANNEL=canary`. Windows variant
+builds are unsigned unless signing environment variables are present, the same
+as release builds.
 
 Electron Builder copies workspace packages regardless of their `files` field.
 The top-level `build.files` rules exclude the web package's original `server`,
@@ -625,7 +669,7 @@ A Canary build is the release app with other icons: same name, bundle id, instal
 
 ### Why a channel switch and not a separate Canary app
 
-A separate app (own name, id, profile) was built first. It meant two installs, two Dock icons and two sets of windows for one set of data, and most of the identity code existed only to keep them apart. One app that moves between channels is what people know from browsers' release channels, and going back is one update.
+A separate app (own name, id, profile) was built first. It meant two installs, two Dock icons and two sets of windows for one set of data, and most of the identity code existed only to keep them apart. One app that moves between channels is what people know from browsers' release channels, and going back is one update. A variant build (`OPENCHAMBER_DESKTOP_VARIANT`, see *Packaging*) is not a channel and does not reopen this: it is a local build someone starts themselves, it refuses updates, and nothing publishes it.
 
 ### Why Stable after Canary downgrades at once and not at the next release
 
@@ -641,7 +685,7 @@ The download link stays the same, the releases page does not fill up with nightl
 
 ## Logs And Data
 
-Electron uses `electron-log`. In development, console logs are also visible in the terminal. In packaged apps, logs are written through the platform log path for the `OpenChamber` app name.
+Electron uses `electron-log`. In development, console logs are also visible in the terminal. In packaged apps, logs are written through the platform log path for the `OpenChamber` app name. A variant build logs under its own app name.
 
 Development builds use a separate user data directory named `OpenChamber Dev`, so dev state does not overwrite normal packaged app state.
 

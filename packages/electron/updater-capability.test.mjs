@@ -9,6 +9,15 @@ test('preserves updater behavior outside packaged Linux', () => {
   assert.doesNotThrow(() => assertUpdaterCapability({ platform: 'linux', packaged: false }));
 });
 
+test('rejects updates in a variant build, which the release feed would replace', () => {
+  assert.throws(
+    () => assertUpdaterCapability({ platform: 'win32', packaged: true, appId: 'dev.openchamber.desktop.test' }),
+    /Updates are not available in a local variant build\./,
+  );
+  assert.doesNotThrow(() => assertUpdaterCapability({ platform: 'win32', packaged: true, appId: 'dev.openchamber.desktop' }));
+  assert.doesNotThrow(() => assertUpdaterCapability({ platform: 'linux', packaged: false, appId: 'dev.openchamber.desktop.dev' }));
+});
+
 test('rejects packaged Linux execution outside an AppImage or an installed package', () => {
   assert.throws(
     () => assertUpdaterCapability({ platform: 'linux', packaged: true, appImagePath: '', packageType: '' }),

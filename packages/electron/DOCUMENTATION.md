@@ -9,6 +9,7 @@ Electron owns native windows, privileged IPC, desktop host credentials, browser-
 ### Startup and storage
 
 - `entry.mjs` and `early-startup.mjs` stay small enough to paint the splash before importing the main process and server graph. Electron delays `ready` until the entry graph finishes evaluating. Both bundles share one runtime instance of `early-startup.mjs`, including its window handoff and startup clock.
+- A variant build (`OPENCHAMBER_DESKTOP_VARIANT`) carries its own app id, name, profile and OpenChamber data directory, resolved once in `early-startup.mjs` from the `openchamberDesktopVariant` field baked into the packaged `package.json`; without the field the release identity applies. The variant's profile and data directory are set before the early window reads settings, and `OPENCHAMBER_DESKTOP_USER_DATA_DIR` or an explicit `OPENCHAMBER_DATA_DIR` keeps precedence. OpenCode's own data stays shared, because it belongs to OpenCode rather than the shell: provider logins and sessions carry over while OpenChamber settings and projects do not. Linux pieces keyed by install identity follow the variant too: the XDG autostart file, its `StartupWMClass`, the AppImage launcher entry and its icon base use the variant's executable name, so enabling launch at login or installing a launcher entry in one build leaves the other's alone.
 - Splash readiness has a deadline. A renderer that never becomes ready cannot prevent backend startup. Closing the early window records quit intent so main cannot recreate it during adoption.
 - Splash load rejection is harmless when backend resolution navigates the window to the application before the splash finishes loading.
 - One launch resolves startup once. Window requests and buffered launch events wait for that resolution because a second server initialization can replace process-global listener state even when binding fails. Port selection precedes server initialization for the same reason. Serverless background launches probe again when a window eventually opens.
@@ -80,6 +81,7 @@ Electron owns native windows, privileged IPC, desktop host credentials, browser-
 - Checks preserve downloaded state for the same version and preserve pending state on feed failure. Only authoritative no-update clears it. The pending record is assigned before fetching notes because download completion can arrive during that await. Cached download completion is authoritative even without an event; an older download never marks a newer record ready.
 - Channel switches wait for the entire prior check, including GitHub fallback, before changing the shared feed. A mirror failure backs off for subsequent checks and downloads, and each running check keeps its own source identity. A missing Stable mirror feed is failure; an unpublished platform feed with no pending package remains no-update.
 - Canary defaults to its own feed unless the user chooses another channel. Stable after Canary permits the explicit downgrade, including package-manager downgrade flags; release builds do not downgrade. Changing channel discards the other channel's pending record.
+- A variant build refuses updates at every updater entry point (`desktop_check_for_updates`, download and install), so no pending update can exist and no release can install over a local variant.
 - SSH setup searches home-installed tools and nvm explicitly because login shells omit interactive PATH setup. Installs use a user-owned prefix to avoid root-owned global directories. Existing OpenChamber installs are selected by version because an older PATH entry can shadow a fresh user-prefix install; nvm npm needs its sibling Node on PATH.
 - SSH commands that do not consume stdin close it because Windows ssh.exe can hang with an open pipe. Askpass delegates prompts it cannot show to the user's configured helper. Raw SSH history stays in main and is classified before IPC; password-bearing probes are never logged because the remote shell can echo them.
 - The remote CLI registry is authoritative for running servers. Registry failure is not an empty result. Reuse requires the intended password policy, version, and bind address; public system information alone proves no authentication. A responding server with another password remains untouched. Only CLI-owned daemons may be replaced, and an adopted daemon follows the instance's keep-running policy.
@@ -92,6 +94,10 @@ Electron owns native windows, privileged IPC, desktop host credentials, browser-
 - Unpackaged Dock branch badges take precedence over unread counts so worktree copies remain distinguishable. The window's development tape ignores pointer input and is reapplied on document readiness because inserted CSS lasts only until reload.
 
 ## Decisions
+
+### Why a variant build is a separate app and not a channel
+
+A variant is for running a local build beside the installed release, so replacing that release is the failure it exists to prevent: it needs its own app id, name, profile, data directory and Linux executable. The Canary channel is the opposite case, one app moving between release channels (see README, *Why a channel switch and not a separate Canary app*), so `OPENCHAMBER_DESKTOP_CHANNEL` keeps its Canary meaning and the variant gets its own variable, `OPENCHAMBER_DESKTOP_VARIANT`. The published feed carries releases only, so a variant refuses update checks instead of letting one replace it, and OpenCode's own data stays shared so provider logins and sessions do not have to be recreated. With the variable unset every identity value stays exactly the release value.
 
 ### Why manual proxy rules and not a PAC script
 
@@ -112,3 +118,7 @@ Tray image changes cost CPU in both the main process and WindowServer throughout
 ### Why native menu refresh follows content signatures
 
 Tray live state belongs to the renderer and the native controller owns presentation. A signature of menu-affecting data avoids rebuilding native menus for unchanged snapshots without serializing images or handlers; native menu lifecycle events also cover keyboard opening for quota refresh.
+
+### Why the variant is baked into package.json and not inferred from the executable
+
+The build environment is gone when a user launches the installed app, and an executable can be renamed or moved, so `process.execPath` cannot identify the variant. electron-builder `extraMetadata` writes `openchamberDesktopVariant` into the packaged `package.json`, which `early-startup.mjs` reads at startup; an unreadable or absent field means the release identity.

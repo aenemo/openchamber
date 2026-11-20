@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createShellEnvironmentLoader } from './shell-environment.mjs';
 import { isSplashColor } from './remote-page-policy.mjs';
+import { readPackagedDesktopVariant, resolveDesktopVariant } from './desktop-variant.mjs';
 import { clearAppImageArgv0FromProcessEnv } from '@openchamber/web/server/lib/inherited-env.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -14,9 +15,11 @@ export const isDev = process.env.OPENCHAMBER_ELECTRON_DEV === '1' || !app.isPack
 
 export const DEEP_LINK_PROTOCOL = 'openchamber';
 export const UI_PROTOCOL = 'openchamber-ui';
-const PACKAGED_APP_USER_MODEL_ID = 'dev.openchamber.desktop';
 const DEV_APP_USER_MODEL_ID = 'dev.openchamber.desktop.dev';
-export const APP_USER_MODEL_ID = app.isPackaged ? PACKAGED_APP_USER_MODEL_ID : DEV_APP_USER_MODEL_ID;
+export const desktopVariant = resolveDesktopVariant(
+  app.isPackaged ? readPackagedDesktopVariant(path.join(app.getAppPath(), 'package.json')) : '',
+);
+export const APP_USER_MODEL_ID = app.isPackaged ? desktopVariant.appId : DEV_APP_USER_MODEL_ID;
 export const BACKGROUND_START_ARG = '--background';
 
 export const getLoginItemOptions = () => {
@@ -76,7 +79,7 @@ export const settingsFilePath = () => {
   if (typeof process.env.OPENCHAMBER_DATA_DIR === 'string' && process.env.OPENCHAMBER_DATA_DIR.trim()) {
     return path.join(process.env.OPENCHAMBER_DATA_DIR.trim(), 'settings.json');
   }
-  return path.join(os.homedir(), '.config', app.isPackaged ? 'openchamber' : 'openchamber-dev', 'settings.json');
+  return path.join(os.homedir(), '.config', app.isPackaged ? desktopVariant.dataDirName : 'openchamber-dev', 'settings.json');
 };
 
 const readJsonFile = (filePath) => {
@@ -334,7 +337,7 @@ export const usesFramelessChrome = () => (
 export const buildMainWindowOptions = ({ bounds, backgroundColor, additionalArguments }) => {
   const usesCustomTitleBar = process.platform === 'darwin' || usesFramelessChrome();
   const options = {
-    title: 'OpenChamber',
+    title: desktopVariant.appName,
     width: bounds?.width ?? DEFAULT_WINDOW_WIDTH,
     height: bounds?.height ?? DEFAULT_WINDOW_HEIGHT,
     minWidth: MIN_WINDOW_WIDTH,

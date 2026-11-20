@@ -6,13 +6,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { plainChromeUserAgent } from './browser-panel-security.mjs';
 import { enableMainProcessCompileCache } from './compile-cache.mjs';
 import { shouldIgnoreLoopbackConnectionLimit } from './startup-url-selection.mjs';
-import { configureDevDataDir } from './dev-data-dir.mjs';
+import { configureOpenChamberDataDir } from './desktop-data-dir.mjs';
 import { assignInjectedEnv } from '@openchamber/web/server/lib/injected-env.js';
 import {
   APP_USER_MODEL_ID,
   UI_PROTOCOL,
   createEarlyWindow,
   deferAppEventsUntilMainLoads,
+  desktopVariant,
   isDev,
   recordEarlyStartupMark,
   shellEnvironmentProbeBlocksMainThread,
@@ -23,13 +24,13 @@ import {
 recordEarlyStartupMark('electron.entry');
 
 const versionBeforeRename = app.getVersion();
-app.setName('OpenChamber');
+app.setName(desktopVariant.appName);
 // external: https://github.com/electron/electron/blob/main/default_app/main.ts Preserve the version before renaming an unpackaged app; Electron default_app uses setVersion for package versions.
 if (app.getVersion() !== versionBeforeRename) {
   app.setVersion(versionBeforeRename);
 }
 if (process.platform === 'linux') {
-  app.setDesktopName('openchamber.desktop');
+  app.setDesktopName(`${desktopVariant.executableName}.desktop`);
   // external: https://www.electronjs.org/docs/latest/api/command-line-switches#enable-speech-dispatcher-linux Linux speech synthesis requires the opt-in speech-dispatcher backend.
   app.commandLine.appendSwitch('enable-speech-dispatcher');
 }
@@ -37,6 +38,9 @@ if (process.platform === 'linux') {
 app.userAgentFallback = plainChromeUserAgent(app.userAgentFallback);
 if (isDev) {
   app.setPath('userData', path.join(app.getPath('appData'), 'OpenChamber Dev'));
+} else if (desktopVariant.variant) {
+  app.setPath('userData', path.join(app.getPath('appData'), desktopVariant.appName));
+  configureOpenChamberDataDir(process.env, desktopVariant.dataDirName);
 }
 const userDataOverride = String(process.env.OPENCHAMBER_DESKTOP_USER_DATA_DIR || '').trim();
 if (userDataOverride) {
@@ -106,7 +110,7 @@ app.whenReady().then(async () => {
     if (shellEnv?.OPENCHAMBER_DATA_DIR?.trim()) {
       process.env.OPENCHAMBER_DATA_DIR = shellEnv.OPENCHAMBER_DATA_DIR;
     }
-    configureDevDataDir(process.env, false);
+    configureOpenChamberDataDir(process.env, 'openchamber-dev');
   }
   return import('./main.mjs');
 }).catch((error) => {
