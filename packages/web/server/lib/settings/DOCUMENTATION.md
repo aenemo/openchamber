@@ -102,6 +102,7 @@ Validation probes every project's filesystem path. Theme and window-state saves 
   - `sanitizeSettingsUpdate(payload)`
   - `mergePersistedSettings(current, changes)`
   - `formatSettingsResponse(settings)`
+- Project folders ride the same update: `createProjectListUpdate(sanitizeProjects, sanitizeProjectFolders)` in `project-folders.js` owns the `projects` and `projectFolders` branches and throws a `TypeError` naming a sanitizer that was not wired, so a missing dependency fails when the helpers are built instead of answering 500 on every settings read that contains folders.
 
 ## Public exports (settings-normalization-runtime.js)
 - `createSettingsNormalizationRuntime(dependencies)`: creates normalization/sanitization runtime for shared settings and tunnel helper logic.
@@ -120,5 +121,6 @@ Validation probes every project's filesystem path. Theme and window-state saves 
   - `sanitizeModelRefs(input, limit)`
   - `sanitizeSkillCatalogs(input)`
   - `sanitizeProjects(input)`
+  - `sanitizeProjectFolders(input)`
 
 Persistence path normalization (`normalizePathForPersistence` / `normalizeSettingsPaths` / `sanitizeProjects`, reached via the `readSettingsFromDiskMigrated` migration and `persistSettings`) resolves symlinks with `realpathSync` and, on case-insensitive filesystems (`win32`, `darwin`), also recovers the on-disk casing of each path component via `readdirSync` (exact-name match preferred so case-sensitive volumes are never rewritten). `realpathSync` alone does not report on-disk casing on these volumes, so without the readdir step a project stored with the wrong case would never match the real-case `directory` opencode reports for its sessions (issue #1913). A corrected path is flagged `changed` and written back to `settings.json`. A path `realpathSync` cannot resolve (missing, no permission) is kept exactly as stored, so case recovery can never swap in a different existing sibling. On macOS only `/` separates components; a backslash is a legal name character. Every settings read runs `sanitizeProjects` three times, so one pass over the project list reads each directory at most once: projects share their ancestors, and reading `/`, `/Users` and the rest again per project made a 71-project settings read about 1,280 synchronous readdirs (#6084). The listings live only for that one synchronous pass, so a later read always sees the disk as it is; a longer-lived cache would need invalidation on a case rename and was not needed once a pass reads each folder once.

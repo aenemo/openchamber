@@ -1,4 +1,5 @@
 import type { ProjectEntry, TerminalShell } from '@/lib/api/types';
+import type { ProjectFolder } from '@/lib/projectFolders/tree';
 import type { DesktopWindowControlsPosition, DesktopWindowControlsStyle } from '@/lib/desktop';
 import { getDirectoryShowHidden, setDirectoryShowHidden } from '@/lib/directoryShowHidden';
 import { sanitizeStarterRefs, type DraftStarterRef } from '@/lib/draftStarters';
@@ -44,6 +45,7 @@ import {
   parseNullableTrimmedString,
   parseOneOf,
   parsePositiveInteger,
+  parseProjectFolders,
   parseProjects,
   parsePwaAppName,
   parseRecentEfforts,
@@ -190,6 +192,7 @@ export const SETTINGS_REGISTRY = {
   opencodeBinary: field({ scope: 'instance', parse: parseTrimmedString }),
   serverUpdateChannel: field({ scope: 'instance', surfaces: ['web'], parse: parseOneOf(['stable', 'canary']) }),
   projects: field<ProjectEntry[]>({ scope: 'instance', parse: parseProjects }),
+  projectFolders: field<ProjectFolder[]>({ scope: 'instance', parse: parseProjectFolders }),
   activeProjectId: field({ scope: 'instance', adopt: 'bootstrap-only', parse: parseNonEmptyString }),
   securityScopedBookmarks: field({ scope: 'instance', surfaces: ['desktop'], parse: parseStringList }),
   pinnedDirectories: field({ scope: 'instance', parse: parseStringSet }),
@@ -322,7 +325,7 @@ export const SETTINGS_REGISTRY = {
   sidebarKeepWorkInPlace: field({ scope: 'profile', perSurface: true, parse: parseBoolean, ui: sessionDisplayField('keepWorkInPlace') }),
   sidebarKeepPinnedInPlace: field({ scope: 'profile', perSurface: true, parse: parseBoolean, ui: sessionDisplayField('keepPinnedInPlace') }),
   sidebarSessionBatchSize: field({ scope: 'profile', parse: parseIntegerInRange(SIDEBAR_SESSION_BATCH_MIN, SIDEBAR_SESSION_BATCH_MAX), ui: sessionDisplayField('sessionBatchSize') }),
-  sidebarProjectSortOrder: field({ scope: 'profile', parse: parseOneOf(['manual', 'a-z', 'z-a', 'date-added', 'recent']), ui: sessionDisplayField('projectSortOrder') }),
+  sidebarProjectSortOrder: field({ scope: 'profile', parse: parseOneOf(['manual', 'a-z', 'z-a', 'date-added', 'recent', 'least-recent']), ui: sessionDisplayField('projectSortOrder') }),
   sidebarShowChatsSection: field({ scope: 'profile', perSurface: true, parse: parseBoolean, ui: sessionDisplayField('showChatsSection') }),
   sidebarShowWorkSection: field({ scope: 'profile', perSurface: true, parse: parseBoolean, ui: sessionDisplayField('showWorkSection') }),
   sidebarShowPinnedSection: field({ scope: 'profile', perSurface: true, parse: parseBoolean, ui: sessionDisplayField('showPinnedSection') }),

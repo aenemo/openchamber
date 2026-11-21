@@ -72,6 +72,7 @@ describe('useProjectsInSidebarOrder', () => {
       ['z-a', ['delta', 'charlie', 'bravo', 'alpha']],
       ['date-added', ['alpha', 'bravo', 'delta', 'charlie']],
       ['recent', ['alpha', 'charlie', 'delta', 'bravo']],
+      ['least-recent', ['bravo', 'delta', 'charlie', 'alpha']],
     ];
     for (const [order, ids] of expected) {
       await act(async () => useSessionDisplayStore.setState({ projectSortOrder: order }));
@@ -105,6 +106,20 @@ describe('useProjectsInSidebarOrder', () => {
       session('in-delta', '/repos/delta', 500),
     ], []));
     expect(shownList).toBe(before);
+  });
+
+  test('Least recent ranks by the oldest session in each project', async () => {
+    useSessionDisplayStore.setState({ projectSortOrder: 'least-recent' });
+    await act(async () => root.render(<Harness items={projects} />));
+    // No sessions yet: last opened oldest first, as the base sort.
+    expect(shown).toEqual(['bravo', 'delta', 'charlie', 'alpha']);
+
+    await act(async () => useGlobalSessionsStore.getState().applySnapshot([
+      session('in-bravo', '/repos/bravo/src', 900),
+      session('in-delta', '/repos/delta', 500),
+      session('elsewhere', '/tmp/other', 10_000),
+    ], []));
+    expect(shown).toEqual(['charlie', 'alpha', 'delta', 'bravo']);
   });
 
   test('entries that are not projects stay first, and a closed list reads nothing', async () => {

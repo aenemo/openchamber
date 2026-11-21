@@ -10,6 +10,7 @@ import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { formatProjectLabel } from '@/components/session/sidebar/utils';
 import { useProjectsStore } from '@/stores/useProjectsStore';
+import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
 import { useSessionFoldersStore } from '@/stores/useSessionFoldersStore';
 import { MobileProjectIcon } from '../MobileProjectIcon';
 import { MobileSwipeActionsRow, ROW_ACTION_SLOT_WIDTH } from '../MobileSessionSwipe';
@@ -171,6 +172,33 @@ export const MobileGroupHeader: React.FC<{
       {row.empty ? <span aria-hidden className="size-3.5 shrink-0" /> : <FileTreeChevron expanded={expanded} />}
       <Icon name="folder" className="mx-px size-3 shrink-0 text-muted-foreground" />
       <span className="block min-w-0 flex-1 truncate typography-ui-label font-medium oc-group-label">{label}</span>
+    </button>
+  );
+};
+
+export const MobileProjectFolderRow: React.FC<{
+  row: Extract<SessionSidebarRow, { kind: 'project-folder-header' }>;
+  geometry: MobileTreeGeometry;
+}> = ({ row, geometry }) => {
+  const { t } = useI18n();
+  const expanded = !row.collapsed;
+  return (
+    <button
+      type="button"
+      className="flex min-h-10 w-full items-center gap-0.5 py-1 pe-3 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      onClick={() => {
+        if (!putAwayRevealed()) useSessionDisplayStore.getState().toggleCollapsedProjectFolder(row.folder.id);
+      }}
+      aria-expanded={expanded}
+      aria-label={expanded
+        ? t('sessions.sidebar.folderItem.collapseAria', { folderName: row.folder.name })
+        : t('sessions.sidebar.folderItem.expandAria', { folderName: row.folder.name })}
+      style={{ paddingInlineStart: geometry.slotLeft(row.depth), touchAction: 'manipulation' }}
+    >
+      <FileTreeChevron expanded={expanded} />
+      <Icon name="folder" className="mx-px size-3 shrink-0 text-muted-foreground" />
+      <span className="block min-w-0 flex-1 truncate typography-ui-label font-medium oc-group-label">{row.folder.name}</span>
+      {row.projectCount > 0 ? <span className="shrink-0 typography-micro text-muted-foreground">{row.projectCount}</span> : null}
     </button>
   );
 };

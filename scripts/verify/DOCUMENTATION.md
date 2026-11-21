@@ -34,6 +34,8 @@ FAIL composer.send.shift-enter (21.8s)
 
 A fresh stand warms up for about 40 s (Vite's first compile of the chat, Changes and Files) before the first scenario; a full run of about 200 scenarios takes about 25 minutes. With `--keep` the stand runs until Ctrl-C, and `--attach` runs against it in seconds, which is the loop for writing scenarios. Vite serves the checkout's UI source, so a UI edit shows in the next scenario without restarting the stand. The server runs the code it started with: a change under `packages/web/server` needs a new stand.
 
+Because the stand serves live source, a UI edit made while scenarios run reloads the page under a step and fails it as if the app were broken; a full run once cost a scenario that way. Finish the tree, then run the net. For the same reason, a failed scenario next to a page reload of an edited file is the edit, not the feature.
+
 The stand runs the OpenCode server the desktop app bundles, at the version this checkout pins (`@opencode/server` in `packages/electron/package.json`). It stages it into `packages/electron/resources/opencode-server` on first use, which downloads native packages from npm; without network access the stand stops at once and says so. `OPENCODE_BINARY` overrides it with an OpenCode CLI of that exact version; a separate official npm platform package can be extracted outside the checkout without changing `PATH`. For example, in Windows Command Prompt:
 
 ```bat

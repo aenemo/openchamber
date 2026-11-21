@@ -25,7 +25,7 @@ export const resolveSearchResultPlacement = (
   topContentHasSearchMatches: boolean,
 ): 'top-content' | 'empty-state' => topContentHasSearchMatches ? 'top-content' : 'empty-state';
 
-type GroupRenderDescriptor = {
+export type GroupRenderDescriptor = {
   group: SessionGroup;
   groupKey: string;
   projectId: string;

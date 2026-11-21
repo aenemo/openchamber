@@ -54,6 +54,30 @@
             {"do": "see", "on": "chat.answer", "text": "markRead"},
             {"do": "see", "on": "sidebar.row", "session": "a", "text": "Sync already open"}
           ]
+        },
+        {
+          "id": "project-folders",
+          "kind": "path",
+          "title": "A project folder holds a project across a reload, and undo brings the folder back",
+          "steps": [
+            {"do": "open"},
+            {"do": "see", "on": "sidebar.project", "text": "relay-desk"},
+            {"do": "click", "on": "sidebar.projectsCaption", "button": "right"},
+            {"do": "click", "on": "menu.item", "text": "New folder..."},
+            {"do": "see", "on": "sidebar.projectFolder", "text": "New folder"},
+            {"do": "drag", "on": "sidebar.project", "text": "relay-desk", "to": {"on": "sidebar.projectFolder", "text": "New folder"}},
+            {"do": "see", "on": "sidebar.projectFolderCount", "text": "1"},
+            {"do": "storage.clear"},
+            {"do": "reload"},
+            {"do": "see", "on": "sidebar.projectFolder", "text": "New folder"},
+            {"do": "see", "on": "sidebar.projectFolderCount", "text": "1"},
+            {"do": "click", "on": "sidebar.projectFolder", "text": "New folder", "button": "right"},
+            {"do": "click", "on": "menu.item", "text": "Delete folder"},
+            {"do": "click", "on": "dialog.button", "text": "Delete"},
+            {"do": "see", "on": "toast", "text": "Deleted folder"},
+            {"do": "click", "on": "toast.action", "text": "Undo"},
+            {"do": "see", "on": "sidebar.projectFolder", "text": "New folder"}
+          ]
         }
       ]
     },

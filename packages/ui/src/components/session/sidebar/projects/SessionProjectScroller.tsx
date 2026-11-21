@@ -38,14 +38,18 @@ import { SidebarConversationRow, SidebarSearchArchivedCaption, SidebarSearchShow
 import { setSidebarBlockDrag, useSidebarBlockDragStore } from '../list/blockDrag';
 import { removeFolderFromSections, saveSidebarSections, useSidebarSectionsUiStore } from '../sections/sectionActions';
 import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
+import { useProjectsStore } from '@/stores/useProjectsStore';
 import { SortableSidebarSection } from './SortableSidebarSection';
 import { sectionDragId, sectionIdOfRow } from './sectionDrag';
+import { resolveProjectDropAction } from './projectDropAction';
 import { sessionDetailedRowPaddingLeft, sessionTreeTextInset } from '../sessions/sessionTreeGeometry';
 import { SessionSidebarActivityHeader, SessionSidebarCaption } from '../sessionSidebarHeaderPresentation';
 import { useSidebarPages } from '../pages/useSidebarPages';
 import { SidebarPageRow } from '../pages/SidebarPageRow';
 import { isPinnedZoneRowKey, resolveSessionSidebarStickyHeader, type SessionSidebarRow, type SessionSidebarRowModel } from '../sessionSidebarRowModel';
 import { SortableProjectItem } from './sortableItems';
+import { ProjectCaptionSortMenu } from './projectCaptionSortMenu';
+import { ProjectFolderHeader } from './ProjectFolderHeader';
 import { WorktreeWorkRow } from '../works/WorktreeWorkRow';
 import { SessionDraftRow } from '../works/SessionDraftRow';
 import { isGroupWork } from '../works/sidebarWorks';
@@ -165,6 +169,13 @@ function SessionProjectScrollerComponent({ model, view, actions }: SessionProjec
   const renameFolder = useSessionFoldersStore((state) => state.renameFolder);
   const deleteFolder = useSessionFoldersStore((state) => state.deleteFolder);
   const addSessionToFolder = useSessionFoldersStore((state) => state.addSessionToFolder);
+  const projectFolders = useProjectsStore((state) => state.projectFolders);
+  const sidebarProjects = useProjectsStore((state) => state.projects);
+  const moveProjectToFolder = useProjectsStore((state) => state.moveProjectToFolder);
+  const projectFolderIdById = React.useMemo(
+    () => new Map(sidebarProjects.map((project) => [project.id, project.folderId ?? null] as const)),
+    [sidebarProjects],
+  );
   const showDeletionDialog = useUIStore((state) => state.showDeletionDialog);
   const spacesPageAvailable = useUIStore((state) => state.isolatedSpacesEnabled) && !isVSCodeRuntime();
   const openProjectOnBoard = useOpenProjectOnBoard();
@@ -362,8 +373,17 @@ function SessionProjectScrollerComponent({ model, view, actions }: SessionProjec
         />
       </CrossfadeZoneHeader>);
     }
-    if (row.kind === 'project-header') {
-      const project = row.section.project;
+    if (row.kind === 'project-folder-header') {
+      return <ProjectFolderHeader
+        folder={row.folder}
+        depth={row.depth}
+        collapsed={row.collapsed}
+        projectCount={row.projectCount}
+        mobileVariant={view.mobileVariant}
+        alwaysShowActions={view.alwaysShowActions}
+      />;
+    }
+    if (row.kind === 'project-header') {      const project = row.section.project;
       const label = getProjectLabel(project, view.homeDirectory);
       const sortGroup = projectSortGroupById.get(project.id) ?? PROJECTS_SORT_GROUP;
       return <SortableProjectItem
@@ -415,6 +435,9 @@ function SessionProjectScrollerComponent({ model, view, actions }: SessionProjec
         onRenameStart={() => actions.openProjectEditDialog(project.id)}
         onArchiveAll={() => void requestArchiveAll(label, row.section.groups)}
         onClose={() => actions.removeProject(project.id)}
+        folderChoices={projectFolders}
+        currentFolderId={projectFolderIdById.get(project.id) ?? null}
+        onMoveToFolder={(folderId) => moveProjectToFolder(project.id, folderId)}
         showCreateButtons
       />;
     }
@@ -549,21 +572,23 @@ function SessionProjectScrollerComponent({ model, view, actions }: SessionProjec
     }
     if (row.kind === 'status') return renderStatus(row);
     if (row.kind === 'caption') {
-      return sortableSection(row, <SessionSidebarCaption
-        label={row.label}
-        preview={row.preview === true}
-        collapsed={row.collapsed}
-        alwaysShowActions={view.alwaysShowActions}
-        addsProjects={row.caption === 'projects'}
-        onToggle={() => toggleProjectsCaption(row, { model })}
-      />);
+      return sortableSection(row, <ProjectCaptionSortMenu caption={row.caption} mobileVariant={view.mobileVariant}>
+        <SessionSidebarCaption
+          label={row.label}
+          preview={row.preview === true}
+          collapsed={row.collapsed}
+          alwaysShowActions={view.alwaysShowActions}
+          addsProjects={row.caption === 'projects'}
+          onToggle={() => toggleProjectsCaption(row, { model })}
+        />
+      </ProjectCaptionSortMenu>);
     }
     if (row.emptyKind === 'sidebar') return model.emptyState;
     if (row.emptyKind === 'search') return model.searchEmptyState;
     return <div className="py-1 text-start typography-micro text-muted-foreground" style={{ paddingInlineStart: rowTextInset }}>
       {row.emptyKind === 'section' ? t('sessions.sidebar.sections.empty') : t('sessions.sidebar.group.empty.noArchivedSessions')}
     </div>;
-  }, [actions, deleteFolder, files, model, openProjectFolder, openProjectOnBoard, pageById, projectPickerOptions, projectSortGroupById, renameFolder, renderStatus, requestArchiveAll, showDeletionDialog, sortableSection, spacesPageAvailable, t, toggleFolderCollapse, view]);
+  }, [actions, deleteFolder, files, model, moveProjectToFolder, openProjectFolder, openProjectOnBoard, pageById, projectFolderIdById, projectFolders, projectPickerOptions, projectSortGroupById, renameFolder, renderStatus, requestArchiveAll, showDeletionDialog, sortableSection, spacesPageAvailable, t, toggleFolderCollapse, view]);
 
   const sortableIds = React.useMemo(() => {
     const projects: string[] = [];
@@ -647,6 +672,13 @@ function SessionProjectScrollerComponent({ model, view, actions }: SessionProjec
       });
       return;
     }
+    if (activeData.type === 'project' && overData?.type === 'project-folder' && overData.folderId) {
+      const activeId = String(active.id);
+      if (!view.hasSessionSearchQuery && model.state.editingId === null) {
+        useProjectsStore.getState().moveProjectToFolder(activeId, overData.folderId);
+      }
+      return;
+    }
     if (view.hasSessionSearchQuery || model.state.editingId !== null || active.id === over.id) return;
     if (activeData.type === 'section' && activeData.sectionId && overData?.sectionId) {
       const sections = useSessionDisplayStore.getState().sections;
@@ -671,9 +703,19 @@ function SessionProjectScrollerComponent({ model, view, actions }: SessionProjec
       return;
     }
     const projectIds = model.sectionsForRender.map((section) => section.project.id);
-    const projectFrom = projectIds.indexOf(activeId);
-    const projectTo = projectIds.indexOf(overId);
-    if (projectFrom >= 0 && projectTo >= 0 && view.projectSortOrder === 'manual') actions.reorderProjects(projectFrom, projectTo);
+    const action = resolveProjectDropAction({
+      activeId,
+      overId,
+      projectIds,
+      folderIdByProjectId: projectFolderIdById,
+      folderRowsPresent: model.rowModel.rows.some((row) => row.kind === 'project-folder-header'),
+      sortOrder: view.projectSortOrder,
+    });
+    if (action?.kind === 'move-to-folder') {
+      moveProjectToFolder(activeId, action.folderId);
+      return;
+    }
+    if (action?.kind === 'reorder') actions.reorderProjects(action.from, action.to);
   };
 
   return <div className="relative flex min-h-0 flex-1">

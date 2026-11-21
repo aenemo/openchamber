@@ -49,6 +49,7 @@ import { useSessionFoldersStore } from '@/stores/useSessionFoldersStore';
 import { isWorkExpanded, type useSessionProjectViewState } from '../projects/useSessionProjectViewState';
 import { resolveSidebarGrouping, useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
 import { holdOrder, rankByLatestActivity } from './projectSort';
+import { useHeldProjectOrder } from '@/hooks/useHeldProjectOrder';
 import type { DeleteSessionConfirmState } from '../sessions/useSessionActions';
 import { useExpandedParents } from '../sessions/useExpandedParents';
 import { getChatsRootFromDirectory, isChatDirectoryPath } from '@/lib/chatDirectories';
@@ -448,12 +449,8 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     () => new Map(collection.orderedSessions.map((session, index) => [session.id, index])),
     [collection.orderedSessions],
   );
-  const [heldProjectOrder, setHeldProjectOrder] = React.useState<readonly string[] | null>(null);
   const shownProjectOrderRef = React.useRef<readonly string[]>([]);
-  const holdsProjectOrder = view.projectSortOrder === 'recent';
-  React.useEffect(() => {
-    if (!holdsProjectOrder) setHeldProjectOrder(null);
-  }, [holdsProjectOrder]);
+  const { heldProjectOrder, holdsProjectOrder, recordHold } = useHeldProjectOrder(view.projectSortOrder);
   const orderedSectionsForRender = React.useMemo(() => {
     const ranked = rankByLatestActivity(sectionsForSidebarRender, view.projectSortOrder, (section) => section.project.id, ownership.sessionsByProject);
     return [...(heldProjectOrder && holdsProjectOrder ? holdOrder(ranked, heldProjectOrder, (section) => section.project.id) : ranked)];
@@ -1184,6 +1181,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     collapsedGroups,
     collapsedFolders: collapsedFolderIds,
     collapsedActivities: rowCollapsedActivities,
+    ...collection.projectFolderRows,
     expandedParents,
     visibleCountByContainer,
     pinnedSessionIds: collection.pinnedSessionIds,
@@ -1203,7 +1201,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     sessionBatchSize,
     runIndex,
     blocks: sidebarBlocks,
-  }), [blockDrag, sidebarBlocks, runIndex, archivedChatGroup, chatGroup, showChatsSection, rowCollapsedActivities, pinnedItems, pinnedWorktreeEntries, workEntries, timeEntries, draftPlacement, movedSessionIds, movedGroupKeys, detailedZoneRows, collapsedFolderIds, collection.pinnedSessionIds, expandedParents, folderAuthorityByOwner, foldersMap, groupStatusByKey, orderedSectionsForRender, ownership.bySessionId, projectSections, collapsedGroups, rowCollapsedProjects, selectedSingleProjectId, sessionOrderIndex, singleProjectMode, view.activeProjectId, view.hasSessionSearchQuery, view.hideDirectoryControls, view.homeDirectory, view.showOnlyMainWorkspace, sessionBatchSize, visibleCountByContainer, worktreeArchiveAnchors, liveSpaceIds, conversationResults, revealedSearchSections, searchSectionsWithMore, searchIncomplete, searchLocationById, searchProjectById]);
+  }), [blockDrag, sidebarBlocks, runIndex, archivedChatGroup, chatGroup, showChatsSection, rowCollapsedActivities, pinnedItems, pinnedWorktreeEntries, workEntries, timeEntries, draftPlacement, movedSessionIds, movedGroupKeys, detailedZoneRows, collapsedFolderIds, collection.projectFolderRows, collection.pinnedSessionIds, expandedParents, folderAuthorityByOwner, foldersMap, groupStatusByKey, orderedSectionsForRender, ownership.bySessionId, projectSections, collapsedGroups, rowCollapsedProjects, selectedSingleProjectId, sessionOrderIndex, singleProjectMode, view.activeProjectId, view.hasSessionSearchQuery, view.hideDirectoryControls, view.homeDirectory, view.showOnlyMainWorkspace, sessionBatchSize, visibleCountByContainer, worktreeArchiveAnchors, liveSpaceIds, conversationResults, revealedSearchSections, searchSectionsWithMore, searchIncomplete, searchLocationById, searchProjectById]);
   React.useEffect(() => {
     onSearchMatchCountChange(searchTotalCount);
   }, [searchTotalCount, onSearchMatchCountChange]);
@@ -1331,9 +1329,11 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
       <div
         className="contents"
         onPointerEnter={(event) => {
-          if (holdsProjectOrder && event.pointerType === 'mouse') setHeldProjectOrder(shownProjectOrderRef.current);
+          if (holdsProjectOrder && event.pointerType === 'mouse') {
+            recordHold(shownProjectOrderRef.current);
+          }
         }}
-        onPointerLeave={() => setHeldProjectOrder(null)}
+        onPointerLeave={() => recordHold(null)}
       >
         {view.renderList
           ? view.renderList({ model: scrollerModel, view: scrollerView, actions: scrollerActionSet })

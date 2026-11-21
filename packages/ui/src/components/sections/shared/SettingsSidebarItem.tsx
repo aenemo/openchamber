@@ -1,4 +1,5 @@
 import React from 'react';
+import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -18,6 +19,12 @@ interface SettingsSidebarItemAction {
   destructive?: boolean;
 }
 
+interface SettingsSidebarItemDragHandle {
+  attributes: DraggableAttributes;
+  listeners?: DraggableSyntheticListeners;
+  setActivatorRef: (node: HTMLButtonElement | null) => void;
+}
+
 interface SettingsSidebarItemProps {
   title: React.ReactNode;
   metadata?: React.ReactNode;
@@ -26,6 +33,7 @@ interface SettingsSidebarItemProps {
   icon?: React.ReactNode;
   actions?: SettingsSidebarItemAction[];
   className?: string;
+  dragHandle?: SettingsSidebarItemDragHandle;
 }
 
 export const SettingsSidebarItem: React.FC<SettingsSidebarItemProps> = ({
@@ -36,6 +44,7 @@ export const SettingsSidebarItem: React.FC<SettingsSidebarItemProps> = ({
   icon,
   actions,
   className,
+  dragHandle,
 }) => {
   const hasActions = actions && actions.length > 0;
   const rowClassName = cn(
@@ -62,8 +71,14 @@ export const SettingsSidebarItem: React.FC<SettingsSidebarItemProps> = ({
   const content = (
       <div className="flex min-w-0 flex-1 items-center">
         <button
+          ref={dragHandle?.setActivatorRef}
+          {...dragHandle?.attributes}
+          {...dragHandle?.listeners}
           onClick={onSelect}
-          className="flex min-w-0 flex-1 flex-col gap-0 rounded-sm text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            'flex min-w-0 flex-1 flex-col gap-0 rounded-sm text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            dragHandle && 'cursor-grab select-none active:cursor-grabbing',
+          )}
           tabIndex={0}
         >
           <div className="flex items-center gap-1.5">

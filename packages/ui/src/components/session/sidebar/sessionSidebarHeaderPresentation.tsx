@@ -93,7 +93,8 @@ export const SessionSidebarCaption: React.FC<{
   alwaysShowActions: boolean;
   addsProjects: boolean;
   onToggle: () => void;
-}> = ({ label, preview = false, collapsed, alwaysShowActions, addsProjects, onToggle }) => {
+  sortLabel?: string | null;
+}> = ({ label, preview = false, collapsed, alwaysShowActions, addsProjects, onToggle, sortLabel }) => {
   const { t } = useI18n();
   return <div className="relative -ms-2.5 -me-2">
     <button
@@ -110,10 +111,11 @@ export const SessionSidebarCaption: React.FC<{
       <Icon
         name={collapsed ? 'arrow-right-s' : 'arrow-down-s'}
         className={cn(
-          'h-3.5 w-3.5 text-muted-foreground',
+          'h-3.5 w-3.5 shrink-0 text-muted-foreground',
           collapsed || alwaysShowActions ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100',
         )}
       />
+      {sortLabel ? <span className="min-w-0 truncate typography-micro text-muted-foreground">{sortLabel}</span> : null}
     </button>
     {addsProjects ? <AddProjectButton /> : null}
   </div>;

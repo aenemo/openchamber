@@ -3,6 +3,7 @@ import type { ProjectEntry } from "@/lib/api/types"
 import type { DesktopSettings } from "@/lib/desktop"
 import { parseSettingsDocument } from "@/lib/settings/registry"
 import { useProjectsStore } from "./useProjectsStore"
+import { createProjectIdFromPath } from "@/lib/projectId"
 import { useDirectoryStore } from "./useDirectoryStore"
 import { opencodeClient } from "../lib/opencode/client"
 
@@ -305,6 +306,280 @@ describe("useProjectsStore project labels", () => {
       const project = useProjectsStore.getState().projects[0]
       expect(project?.label).toBe("Example")
       expect(project?.labelSource).toBe("manual")
+    } finally {
+      useProjectsStore.setState(previous, true)
+    }
+  })
+})
+
+describe("useProjectsStore project folders", () => {
+  const seed = (projects: ProjectEntry[] = [], folders: { id: string; name: string; parentId?: string | null }[] = []) => {
+    useProjectsStore.setState({
+      projects,
+      activeProjectId: projects[0]?.id ?? null,
+      manualProjectOrder: projects.map((project) => project.id),
+      projectFolders: folders.map((folder, index) => ({
+        parentId: null,
+        createdAt: index,
+        updatedAt: index,
+        ...folder,
+      })),
+    })
+  }
+
+  const resetAll = () => {
+    useProjectsStore.setState({
+      projects: [],
+      activeProjectId: null,
+      manualProjectOrder: [],
+      projectFolders: [],
+    })
+  }
+
+  test("creates folders with trimmed names and rejects blanks and unknown parents", () => {
+    const previous = useProjectsStore.getState()
+    try {
+      resetAll()
+      const store = () => useProjectsStore.getState()
+      const root = store().addProjectFolder("  Clients  ")
+      expect(root?.name).toBe("Clients")
+      expect(root?.parentId).toBe(null)
+      expect(store().addProjectFolder("   ")).toBe(null)
+      expect(store().addProjectFolder("Sub", "nope")).toBe(null)
+      const child = store().addProjectFolder("Infra", root?.id)
+      expect(child?.parentId).toBe(root?.id)
+      expect(store().projectFolders.map((folder) => folder.id)).toEqual([root?.id, child?.id])
+    } finally {
+      useProjectsStore.setState(previous, true)
+    }
+  })
+
+  test("renames folders and rejects blanks and unknown ids", () => {
+    const previous = useProjectsStore.getState()
+    try {
+      seed([], [{ id: "f1", name: "Old" }])
+      const store = () => useProjectsStore.getState()
+      expect(store().renameProjectFolder("f1", "  New  ")).toBe(true)
+      expect(store().projectFolders[0]?.name).toBe("New")
+      expect(store().renameProjectFolder("f1", "   ")).toBe(false)
+      expect(store().renameProjectFolder("gone", "New")).toBe(false)
+    } finally {
+      useProjectsStore.setState(previous, true)
+    }
+  })
+
+  test("moves folders between parents and positions and refuses cycles", () => {
+    const previous = useProjectsStore.getState()
+    try {
+      seed([], [
+        { id: "a", name: "A" },
+        { id: "b", name: "B", parentId: "a" },
+        { id: "c", name: "C" },
+      ])
+      const store = () => useProjectsStore.getState()
+      expect(store().moveProjectFolder("b", null, 0)).toBe(true)
+      expect(store().projectFolders.map((folder) => folder.id)).toEqual(["b", "a", "c"])
+      expect(store().projectFolders.find((folder) => folder.id === "b")?.parentId).toBe(null)
+      expect(store().moveProjectFolder("a", "a")).toBe(false)
+      expect(store().moveProjectFolder("a", "b")).toBe(true)
+      expect(store().moveProjectFolder("b", "a")).toBe(false)
+      expect(store().moveProjectFolder("gone", null)).toBe(false)
+      expect(store().projectFolders.map((folder) => [folder.id, folder.parentId])).toEqual([
+        ["b", null],
+        ["c", null],
+        ["a", "b"],
+      ])
+    } finally {
+      useProjectsStore.setState(previous, true)
+    }
+  })
+
+  test("moves projects between folders and back to the root", () => {
+    const previous = useProjectsStore.getState()
+    try {
+      seed(
+        [
+          { id: "p1", path: "/one" },
+          { id: "p2", path: "/two" },
+        ],
+        [{ id: "f1", name: "Clients" }],
+      )
+      const store = () => useProjectsStore.getState()
+      expect(store().moveProjectToFolder("p1", "f1")).toBe(true)
+      expect(store().projects.find((project) => project.id === "p1")?.folderId).toBe("f1")
+      expect(store().moveProjectToFolder("p1", "f1")).toBe(true)
+      expect(store().moveProjectToFolder("p1", null)).toBe(true)
+      expect(store().projects.find((project) => project.id === "p1")?.folderId ?? null).toBe(null)
+      expect(store().moveProjectToFolder("p1", "gone")).toBe(false)
+      expect(store().moveProjectToFolder("gone", null)).toBe(false)
+    } finally {
+      useProjectsStore.setState(previous, true)
+    }
+  })
+
+  test("deleting a folder with move keeps child folders and moves only its direct projects", () => {
+    const previous = useProjectsStore.getState()
+    try {
+      seed(
+        [
+          { id: "p1", path: "/one", folderId: "child" },
+          { id: "p2", path: "/two", folderId: "parent" },
+          { id: "p3", path: "/three" },
+        ],
+        [
+          { id: "parent", name: "Parent" },
+          { id: "child", name: "Child", parentId: "parent" },
+          { id: "target", name: "Target" },
+        ],
+      )
+      const outcome = useProjectsStore.getState().deleteProjectFolder("parent", "move", "target")
+      expect(outcome).toEqual({ moved: 1, closed: 0 })
+      const state = useProjectsStore.getState()
+      expect(state.projectFolders.map((folder) => [folder.id, folder.parentId])).toEqual([
+        ["child", "target"],
+        ["target", null],
+      ])
+      expect(state.projects.find((project) => project.id === "p1")?.folderId).toBe("child")
+      expect(state.projects.find((project) => project.id === "p2")?.folderId).toBe("target")
+      expect(state.projects.find((project) => project.id === "p3")?.folderId ?? null).toBe(null)
+    } finally {
+      useProjectsStore.setState(previous, true)
+    }
+  })
+
+  test("deleting a folder with close removes only its direct projects", () => {
+    const previous = useProjectsStore.getState()
+    try {
+      seed(
+        [
+          { id: "p1", path: "/one", folderId: "gone" },
+          { id: "p2", path: "/two" },
+        ],
+        [{ id: "gone", name: "Gone" }],
+      )
+      const outcome = useProjectsStore.getState().deleteProjectFolder("gone", "close")
+      expect(outcome).toEqual({ moved: 0, closed: 1 })
+      const state = useProjectsStore.getState()
+      expect(state.projectFolders).toEqual([])
+      expect(state.projects.map((project) => project.id)).toEqual(["p2"])
+    } finally {
+      useProjectsStore.setState(previous, true)
+    }
+  })
+
+  test("deleting a folder with close keeps child folders and their projects", () => {
+    const previous = useProjectsStore.getState()
+    try {
+      seed(
+        [
+          { id: "p1", path: "/one", folderId: "parent" },
+          { id: "p2", path: "/two", folderId: "child" },
+        ],
+        [
+          { id: "parent", name: "Parent" },
+          { id: "child", name: "Child", parentId: "parent" },
+        ],
+      )
+      const outcome = useProjectsStore.getState().deleteProjectFolder("parent", "close")
+      expect(outcome).toEqual({ moved: 0, closed: 1 })
+      const state = useProjectsStore.getState()
+      expect(state.projectFolders.map((folder) => [folder.id, folder.parentId])).toEqual([
+        ["child", null],
+      ])
+      expect(state.projects.map((project) => project.id)).toEqual(["p2"])
+      expect(state.projects[0]?.folderId).toBe("child")
+    } finally {
+      useProjectsStore.setState(previous, true)
+    }
+  })
+
+  test("restores a folder delete snapshot for undo", () => {
+    const previous = useProjectsStore.getState()
+    try {
+      seed(
+        [{ id: "p1", path: "/one", folderId: "f1" }],
+        [{ id: "f1", name: "Clients" }],
+      )
+      const snapshot = {
+        projects: useProjectsStore.getState().projects,
+        projectFolders: useProjectsStore.getState().projectFolders,
+      }
+      useProjectsStore.getState().deleteProjectFolder("f1", "move", null)
+      expect(useProjectsStore.getState().projectFolders).toEqual([])
+      useProjectsStore.getState().restoreProjectTree(snapshot)
+      expect(useProjectsStore.getState().projectFolders.map((folder) => folder.id)).toEqual(["f1"])
+      expect(useProjectsStore.getState().projects[0]?.folderId).toBe("f1")
+    } finally {
+      useProjectsStore.setState(previous, true)
+    }
+  })
+
+  test("restoring a close snapshot brings back the active project and manual order", () => {
+    const previous = useProjectsStore.getState()
+    try {
+      seed(
+        [
+          { id: "p1", path: "/one", folderId: "f1" },
+          { id: "p2", path: "/two" },
+        ],
+        [{ id: "f1", name: "Clients" }],
+      )
+      useProjectsStore.setState({ activeProjectId: "p1", manualProjectOrder: ["p2", "p1"] })
+      const store = () => useProjectsStore.getState()
+      const snapshot = {
+        projects: store().projects,
+        projectFolders: store().projectFolders,
+        activeProjectId: store().activeProjectId,
+        manualProjectOrder: store().manualProjectOrder,
+      }
+      expect(store().deleteProjectFolder("f1", "close")).toEqual({ moved: 0, closed: 1 })
+      expect(store().projects.map((project) => project.id)).toEqual(["p2"])
+      expect(store().activeProjectId).toBe("p2")
+      expect(store().manualProjectOrder).toEqual(["p2"])
+      store().restoreProjectTree(snapshot)
+      expect(store().projects.map((project) => project.id).sort()).toEqual(["p1", "p2"])
+      expect(store().projects.find((project) => project.id === "p1")?.folderId).toBe("f1")
+      expect(store().activeProjectId).toBe("p1")
+      expect(store().manualProjectOrder).toEqual(["p2", "p1"])
+    } finally {
+      useProjectsStore.setState(previous, true)
+    }
+  })
+
+  test("sync keeps local folders and links when the document has no folder key", () => {
+    const previous = useProjectsStore.getState()
+    try {
+      resetAll()
+      const [seeded] = [{ path: "/repo", folderId: "kept" }]
+      seed(
+        [{ id: createProjectIdFromPath("/repo"), ...seeded }],
+        [{ id: "kept", name: "Kept" }],
+      )
+      const folders = useProjectsStore.getState().projectFolders
+      // SAFETY: the sync reads only projects here; the missing key is the case under test.
+      useProjectsStore.getState().synchronizeFromSettings({
+        projects: [{ path: "/repo" }],
+      } as DesktopSettings)
+      const state = useProjectsStore.getState()
+      expect(state.projectFolders).toEqual(folders)
+      expect(state.projects[0]?.folderId ?? null).toBe("kept")
+    } finally {
+      useProjectsStore.setState(previous, true)
+    }
+  })
+
+  test("sync drops project links to folders the settings no longer list", () => {
+    const previous = useProjectsStore.getState()
+    try {
+      resetAll()
+      // SAFETY: the sync reads projects and projectFolders here; the ghost link exercises orphan repair.
+      useProjectsStore.getState().synchronizeFromSettings({
+        projects: [{ path: "/repo", folderId: "ghost" }],
+        projectFolders: [{ id: "kept", name: "Kept", parentId: null, createdAt: 0, updatedAt: 0 }],
+      } as DesktopSettings)
+      const state = useProjectsStore.getState()
+      expect(state.projects[0]?.folderId ?? null).toBe(null)
+      expect(state.projectFolders.map((folder) => folder.id)).toEqual(["kept"])
     } finally {
       useProjectsStore.setState(previous, true)
     }

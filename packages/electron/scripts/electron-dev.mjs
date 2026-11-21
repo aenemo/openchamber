@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { configureDevDataDir } from '../dev-data-dir.mjs';
+import { configureOpenChamberDataDir } from '../desktop-data-dir.mjs';
 import { createShellEnvironmentLoader } from '../shell-environment.mjs';
 import { injectedEnvKeys } from '@openchamber/web/server/lib/injected-env.js';
 import { waitForHmrApi } from './hmr-readiness.mjs';
@@ -303,7 +303,7 @@ async function main() {
     if (!process.env.OPENCHAMBER_DATA_DIR?.trim() && shellEnv?.OPENCHAMBER_DATA_DIR?.trim()) {
       process.env.OPENCHAMBER_DATA_DIR = shellEnv.OPENCHAMBER_DATA_DIR;
     }
-    configureDevDataDir(process.env, false);
+    configureOpenChamberDataDir(process.env, 'openchamber-dev');
     if (cleaning) return;
     devServer = spawnProcess('node', ['./scripts/dev-web-hmr.mjs'], {
       env: {

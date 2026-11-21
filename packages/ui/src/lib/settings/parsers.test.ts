@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { parseCustomProviderLogos, parseProjects } from './parsers';
+import { parseCustomProviderLogos, parseProjectFolders, parseProjects } from './parsers';
 
 describe('parseCustomProviderLogos', () => {
   test('keeps well-formed entries and drops the rest one by one', () => {
@@ -36,5 +36,55 @@ describe('parseProjects', () => {
       ['/repo/legacy', undefined, undefined, undefined],
     ]);
     expect(parseProjects(parsed, { projects: parsed })).toEqual(parsed);
+  });
+
+  test('keeps the folder link on each project', () => {
+    const parsed = parseProjects([
+      { path: '/repo/app', folderId: 'clients' },
+      { path: '/repo/lib', folderId: '' },
+      { path: '/repo/legacy' },
+    ], { projects: [] });
+
+    expect(parsed?.map((project) => project.folderId ?? null)).toEqual(['clients', null, null]);
+  });
+});
+
+describe('parseProjectFolders', () => {
+  test('keeps well-formed folders with their order and drops the rest one by one', () => {
+    const parsed = parseProjectFolders([
+      { id: 'clients', name: 'Clients', parentId: null, createdAt: 10, updatedAt: 12 },
+      { id: 'infra', name: ' Infra ', parentId: 'clients' },
+      { id: '', name: 'Nameless' },
+      { id: 'empty', name: '   ' },
+      { id: 'long', name: 'x'.repeat(81) },
+      { id: 'clients', name: 'Duplicate' },
+      'not-an-object',
+    ], {});
+
+    expect(parsed).toEqual([
+      { id: 'clients', name: 'Clients', parentId: null, createdAt: 10, updatedAt: 12 },
+      { id: 'infra', name: 'Infra', parentId: 'clients', createdAt: 0, updatedAt: 0 },
+      { id: 'long', name: 'x'.repeat(80), parentId: null, createdAt: 0, updatedAt: 0 },
+    ]);
+  });
+
+  test('lifts orphan folders to the root and breaks parent cycles', () => {
+    const parsed = parseProjectFolders([
+      { id: 'orphan', name: 'Orphan', parentId: 'gone' },
+      { id: 'a', name: 'A', parentId: 'b' },
+      { id: 'b', name: 'B', parentId: 'a' },
+      { id: 'self', name: 'Self', parentId: 'self' },
+    ], {});
+
+    expect(parsed?.map((folder) => [folder.id, folder.parentId])).toEqual([
+      ['orphan', null],
+      ['a', null],
+      ['b', 'a'],
+      ['self', null],
+    ]);
+  });
+
+  test('an empty folder list parses as empty', () => {
+    expect(parseProjectFolders([], {})).toEqual([]);
   });
 });

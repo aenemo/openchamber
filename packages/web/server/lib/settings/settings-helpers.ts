@@ -12,6 +12,7 @@ import type { normalizeTunnelProvider, normalizeTunnelMode, normalizeOptionalPat
 import { idleStopSchema } from '../spaces/idle-stop.js';
 import { sshHostSchema } from '../spaces/places/ssh-host.js';
 import { PROVIDER_LOGO_MIMES } from '../appearance/provider-logo-routes.js';
+import { createProjectListUpdate } from './project-folders.js';
 
 const settingsDocumentSchema = z.looseObject({});
 export type SettingsDocument = z.infer<typeof settingsDocumentSchema>;
@@ -53,7 +54,7 @@ export type SettingsHelpersDependencies = Pick<Normalization,
   'normalizePathForPersistence' | 'normalizeDirectoryPath' | 'normalizeTunnelBootstrapTtlMs'
   | 'normalizeTunnelSessionTtlMs' | 'normalizeManagedRemoteTunnelHostname'
   | 'normalizeManagedRemoteTunnelPresets' | 'normalizeManagedRemoteTunnelPresetTokens'
-  | 'normalizeStringArray' | 'sanitizeModelRefs' | 'sanitizeSkillCatalogs' | 'sanitizeProjects'
+  | 'normalizeStringArray' | 'sanitizeModelRefs' | 'sanitizeSkillCatalogs' | 'sanitizeProjects' | 'sanitizeProjectFolders'
 > & {
   normalizeTunnelProvider: typeof normalizeTunnelProvider;
   normalizeTunnelMode: typeof normalizeTunnelMode;
@@ -294,6 +295,7 @@ export type SanitizedSettings = Partial<Record<BooleanSettingsKey, boolean>>
     permissionAutoAccept?: { sessions: Record<string, PermissionMode | boolean>; revision: number };
     permissionDefaultMode?: PermissionMode;
     projects?: NonNullable<ReturnType<Normalization['sanitizeProjects']>>;
+    projectFolders?: NonNullable<ReturnType<Normalization['sanitizeProjectFolders']>>;
     sidebarSections?: SidebarSection[];
     sidebarPinLists?: { id: string; name: string }[];
     draftStarters?: { type: 'command' | 'skill'; name: string }[];
@@ -356,8 +358,9 @@ export const createSettingsHelpers = (dependencies: SettingsHelpersDependencies)
     normalizeStringArray,
     sanitizeModelRefs,
     sanitizeSkillCatalogs,
-    sanitizeProjects,
   } = dependencies;
+
+  const projectListUpdate = createProjectListUpdate(dependencies.sanitizeProjects, dependencies.sanitizeProjectFolders);
 
   const PWA_APP_NAME_MAX_LENGTH = 64;
   const STT_SERVER_URL_MAX_LENGTH = 2048;
@@ -375,7 +378,7 @@ export const createSettingsHelpers = (dependencies: SettingsHelpersDependencies)
   const SIDEBAR_VIEW_MODE_VALUES = new Set(['projects', 'timeline']);
   const SIDEBAR_LIST_SESSION_GROUPING_VALUES = new Set(['project', 'time']);
   const UI_LOCALE_VALUES = new Set(['en', 'de', 'fr', 'nl', 'zh-CN', 'zh-TW', 'uk', 'es', 'pt-BR', 'ko', 'pl', 'ja', 'tr', 'ar', 'he']);
-  const SIDEBAR_PROJECT_SORT_ORDER_VALUES = new Set(['manual', 'a-z', 'z-a', 'date-added', 'recent']);
+  const SIDEBAR_PROJECT_SORT_ORDER_VALUES = new Set(['manual', 'a-z', 'z-a', 'date-added', 'recent', 'least-recent']);
   const HIDDEN_MODELS_MAX = 1024;
   const RECENT_EFFORTS_MAX_KEYS = 128;
   const RECENT_EFFORTS_MAX_VARIANTS_PER_KEY = 5;
@@ -631,12 +634,7 @@ export const createSettingsHelpers = (dependencies: SettingsHelpersDependencies)
     if (isString(candidate.desktopUiPassword)) {
       result.desktopUiPassword = candidate.desktopUiPassword.trim();
     }
-    if (Array.isArray(candidate.projects)) {
-      const projects = sanitizeProjects(candidate.projects);
-      if (projects) {
-        result.projects = projects;
-      }
-    }
+    projectListUpdate(result, candidate);
     if (isString(candidate.activeProjectId) && candidate.activeProjectId.length > 0) {
       result.activeProjectId = candidate.activeProjectId;
     }

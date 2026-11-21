@@ -3,6 +3,7 @@ import type pathModule from 'node:path';
 import type { SettingsDocument } from './settings-helpers.js';
 import type { ManagedRemoteTunnelPreset } from '../tunnels/managed-config.js';
 import { isBoolean, isString } from '../shared/object-guards.js';
+import { asNonEmptyString, isRecord } from '../shared/guards.js';
 
 const hasFields = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object');
 const isFiniteNumber = (value: unknown): value is number => Number.isFinite(value);
@@ -37,6 +38,15 @@ export interface SettingsProject {
   addedAt?: number;
   lastOpenedAt?: number;
   sidebarCollapsed?: boolean;
+  folderId?: string;
+}
+
+export interface SettingsProjectFolder {
+  id: string;
+  name: string;
+  parentId: string | null;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface SettingsModelRef {
@@ -308,10 +318,59 @@ export const createSettingsNormalizationRuntime = (dependencies: SettingsNormali
         project.sidebarCollapsed = candidate.sidebarCollapsed;
       }
 
+      const folderId = asNonEmptyString(candidate.folderId) ?? '';
+      if (folderId) {
+        project.folderId = folderId;
+      }
+
       result.push(project);
     }
 
     return result;
+  };
+
+  const sanitizeProjectFolders = (input: SettingsDocument[string]): SettingsProjectFolder[] | undefined => {
+    if (!Array.isArray(input)) {
+      return undefined;
+    }
+
+    const folders: SettingsProjectFolder[] = [];
+    const seenIds = new Set<string>();
+
+    for (const entry of input) {
+      if (!isRecord(entry)) continue;
+      const id = asNonEmptyString(entry.id);
+      const name = asNonEmptyString(entry.name)?.slice(0, 80);
+      if (!id || !name || seenIds.has(id)) continue;
+      seenIds.add(id);
+      folders.push({
+        id,
+        name,
+        parentId: asNonEmptyString(entry.parentId),
+        createdAt: isFiniteNumber(entry.createdAt) && entry.createdAt >= 0 ? Math.round(entry.createdAt) : 0,
+        updatedAt: isFiniteNumber(entry.updatedAt) && entry.updatedAt >= 0 ? Math.round(entry.updatedAt) : 0,
+      });
+    }
+
+    const byId = new Map(folders.map((folder) => [folder.id, folder]));
+    for (const folder of folders) {
+      if (folder.parentId && !byId.has(folder.parentId)) folder.parentId = null;
+    }
+    for (const folder of folders) {
+      const seen = new Set([folder.id]);
+      let parentId = folder.parentId;
+      while (parentId) {
+        if (seen.has(parentId)) {
+          folder.parentId = null;
+          break;
+        }
+        seen.add(parentId);
+        const parent = byId.get(parentId);
+        parentId = parent ? parent.parentId : null;
+      }
+    }
+
+    return folders;
   };
 
   const normalizeSettingsPaths = (input: SettingsDocument[string]) => {
@@ -570,5 +629,6 @@ export const createSettingsNormalizationRuntime = (dependencies: SettingsNormali
     sanitizeModelRefs,
     sanitizeSkillCatalogs,
     sanitizeProjects,
+    sanitizeProjectFolders,
   };
 };

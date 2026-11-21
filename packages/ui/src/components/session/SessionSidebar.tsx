@@ -50,7 +50,7 @@ import { captureRuntimeInstance, getRuntimeKey } from '@/lib/runtime-switch';
 import { streamPerfCount, streamPerfMark } from '@/stores/utils/streamDebug';
 import { runBackgroundNetworkTask } from '@/lib/background-network';
 import { buildKnownSessionDirectories } from './sidebar/list/sessionListDirectories';
-import { sortProjectsByOrder } from './sidebar/list/projectSort';
+import { PROJECT_SORT_ORDERS, sortProjectsByOrder } from './sidebar/list/projectSort';
 import { z } from 'zod';
 import { subscribeOpenchamberEvents } from '@/lib/openchamberEvents';
 import {
@@ -579,8 +579,7 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
       if (isVSCode || !isVisible) return false;
       const store = useSessionDisplayStore.getState();
       if (resolveSidebarGrouping(store) === 'time') return false;
-      const order = ['manual', 'a-z', 'z-a', 'date-added', 'recent'] as const;
-      const next = order[(order.indexOf(store.projectSortOrder) + 1) % order.length];
+      const next = PROJECT_SORT_ORDERS[(PROJECT_SORT_ORDERS.indexOf(store.projectSortOrder) + 1) % PROJECT_SORT_ORDERS.length];
       store.setProjectSortOrder(next);
       void updateDesktopSettings({ sidebarProjectSortOrder: next });
     },

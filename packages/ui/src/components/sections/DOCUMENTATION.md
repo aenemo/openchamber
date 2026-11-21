@@ -720,6 +720,20 @@ menu item. The edit dialog leaves it out, because the menu that opens the dialog
 already holds Close project. VS Code shows no Projects page in Settings: its
 projects are the workspace folders VS Code has open.
 
+The list beside the page (`projects/ProjectsSidebar.tsx`) is drawn in the order
+the session sidebar uses. In Manual order a whole row drags to a new position,
+through the same `reorderProjects` and `manualProjectOrder` the sidebar writes,
+so both lists and the phone sheet move together and the order survives a reload.
+Any other order, and VS Code, leaves the rows undraggable; the heading's sort
+control is the way into Manual.
+
+### Why the settings list drags only in manual order
+
+Under A to Z a drop would rewrite the saved manual order while the visible list
+stayed alphabetical, so the row would snap back and the order would change
+invisibly. The session sidebar disables its project drag in the same orders, and
+the sort control sits in the same header, so the two lists behave alike.
+
 A project's setup lives in two files: the team's `.openchamber/project.json` in
 the repo and the user's own config (`packages/web/server/lib/projects`). The page
 shows one list per kind with every entry marked Team or Only me, and

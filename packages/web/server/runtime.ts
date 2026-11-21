@@ -529,7 +529,7 @@ const settingsHelpers = createSettingsHelpers({
   normalizeStringArray,
   sanitizeModelRefs,
   sanitizeSkillCatalogs,
-  sanitizeProjects,
+  sanitizeProjects, sanitizeProjectFolders: settingsNormalizationRuntime.sanitizeProjectFolders,
 });
 
 const normalizePwaAppName: typeof settingsHelpers.normalizePwaAppName = (...args) => settingsHelpers.normalizePwaAppName(...args);

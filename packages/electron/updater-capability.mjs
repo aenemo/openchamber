@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { RELEASE_VARIANT } from './desktop-variant.mjs';
 
 export const readLinuxPackageType = (resourcesPath = process.resourcesPath) => {
   try {
@@ -11,12 +12,16 @@ export const readLinuxPackageType = (resourcesPath = process.resourcesPath) => {
 
 export const assertUpdaterCapability = ({
   platform = process.platform,
+  appId = RELEASE_VARIANT.appId,
   packaged,
   appImagePath = process.env.APPIMAGE,
   packageType = readLinuxPackageType(),
   access = fs.accessSync,
   stat = fs.statSync,
 } = {}) => {
+  if (packaged && appId !== RELEASE_VARIANT.appId) {
+    throw new Error('Updates are not available in a local variant build. Install the released app to receive updates.');
+  }
   if (platform !== 'linux' || !packaged) return;
 
   if (!appImagePath) {

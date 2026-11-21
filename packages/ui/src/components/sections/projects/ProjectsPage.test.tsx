@@ -113,4 +113,43 @@ describe('ProjectsPage', () => {
     await act(async () => { confirmButton?.click(); });
     expect(closed).toEqual(['beta']);
   });
+
+  test('the folder row assigns the shown project to a folder', async () => {
+    const { createRoot } = await import('react-dom/client');
+    const { ThemeSystemProvider } = await import('@/contexts/ThemeSystemContext');
+    const { I18nProvider } = await import('@/lib/i18n');
+    const { useProjectsStore } = await import('@/stores/useProjectsStore');
+    const { useUIStore } = await import('@/stores/useUIStore');
+    const { ProjectsPage } = await import('./ProjectsPage');
+    const previous = useProjectsStore.getState();
+    const previousSelectedId = useUIStore.getState().settingsProjectsSelectedId;
+    useProjectsStore.setState({
+      projects,
+      projectFolders: [{ id: 'clients', name: 'Clients', parentId: null, createdAt: 0, updatedAt: 0 }],
+    });
+    useUIStore.setState({ settingsProjectsSelectedId: 'beta' });
+    const container = document.createElement('div');
+    document.body.append(container);
+    const pageRoot = createRoot(container);
+    try {
+      await act(async () => {
+        pageRoot.render(<ThemeSystemProvider><I18nProvider><ProjectsPage /></I18nProvider></ThemeSystemProvider>);
+      });
+      const row = document.querySelector('[data-settings-item="projects.folder"]');
+      if (!row) throw new Error('Missing folder row');
+      const trigger = row.querySelector<HTMLElement>('[role="combobox"]');
+      expect(trigger?.textContent).toContain('No folder');
+      await act(async () => { trigger?.click(); });
+      // Base UI Select ignores synthetic option activation in happy-dom (the
+      // sort select has the same limit), so this pins the rendered options and
+      // the live instance proves picking one.
+      const options = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'));
+      expect(options.map((option) => option.textContent?.trim())).toEqual(['No folder', 'Clients']);
+    } finally {
+      await act(async () => { pageRoot.unmount(); });
+      container.remove();
+      useProjectsStore.setState(previous, true);
+      useUIStore.setState({ settingsProjectsSelectedId: previousSelectedId });
+    }
+  });
 });

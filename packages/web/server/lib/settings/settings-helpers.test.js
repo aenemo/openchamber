@@ -15,7 +15,7 @@ import { createSettingsNormalizationRuntime } from './settings-normalization-run
 const testFilePath = fileURLToPath(import.meta.url);
 const packagesWebDir = join(dirname(testFilePath), '..', '..', '..');
 
-const createTestHelpers = () => createSettingsHelpers({
+const stubDependencies = () => ({
   normalizePathForPersistence: (value) => value,
   normalizeDirectoryPath: (value) => value,
   normalizeTunnelBootstrapTtlMs: (value) => value,
@@ -31,6 +31,32 @@ const createTestHelpers = () => createSettingsHelpers({
   sanitizeModelRefs: () => undefined,
   sanitizeSkillCatalogs: () => undefined,
   sanitizeProjects: () => undefined,
+  sanitizeProjectFolders: () => undefined,
+});
+
+const createTestHelpers = () => createSettingsHelpers(stubDependencies());
+
+it('refuses to build without the project folder sanitizer', () => {
+  const { sanitizeProjectFolders, ...dependencies } = stubDependencies();
+  expect(sanitizeProjectFolders).toBeTypeOf('function');
+  expect(() => createSettingsHelpers(dependencies)).toThrow(/sanitizeProjectFolders/);
+});
+
+it('sanitizes project folders on the settings response, keeping known parents and clearing unknown ones', () => {
+  const helpers = createTestHelpersWithRealSanitizers();
+  const response = helpers.formatSettingsResponse({
+    projectFolders: [
+      { id: 'clients', name: 'Clients', parentId: null, createdAt: 1, updatedAt: 2 },
+      { id: 'child', name: 'Child', parentId: 'clients', createdAt: 1, updatedAt: 2 },
+      { id: 'orphan', name: 'Orphan', parentId: 'missing', createdAt: 1, updatedAt: 2 },
+      { id: 'clients', name: 'Duplicate', parentId: null, createdAt: 1, updatedAt: 2 },
+    ],
+  });
+  expect(response.projectFolders.map((folder) => [folder.id, folder.parentId])).toEqual([
+    ['clients', null],
+    ['child', 'clients'],
+    ['orphan', null],
+  ]);
 });
 
 const createTestHelpersWithRealSanitizers = () => {
@@ -65,7 +91,8 @@ const createTestHelpersWithRealSanitizers = () => {
     normalizeStringArray: runtime.normalizeStringArray,
     sanitizeModelRefs: runtime.sanitizeModelRefs,
     sanitizeSkillCatalogs: () => undefined,
-    sanitizeProjects: () => undefined,
+    sanitizeProjects: runtime.sanitizeProjects,
+    sanitizeProjectFolders: runtime.sanitizeProjectFolders,
   });
 };
 
@@ -279,6 +306,11 @@ describe('settings helpers', () => {
       sidebarViewMode: 'timeline',
       sidebarProjectSortOrder: 'z-a',
       sidebarShowChatsSection: false,
+    });
+    expect(helpers.sanitizeSettingsUpdate({
+      sidebarProjectSortOrder: 'least-recent',
+    })).toEqual({
+      sidebarProjectSortOrder: 'least-recent',
     });
     expect(helpers.sanitizeSettingsUpdate({
       sidebarProjectDisplayMode: 'grid',
@@ -973,7 +1005,7 @@ describe('settings registry gate', () => {
     themeId: 'openchamber-dark', locale: 'zh-CN', useSystemTheme: true, themeVariant: 'dark', lightThemeId: 'openchamber-light', darkThemeId: 'openchamber-dark',
     splashBgLight: '#fff', splashFgLight: '#000', splashBgDark: '#000', splashFgDark: '#fff',
     lastDirectory: '/home/testuser/project', homeDirectory: '/home/testuser', opencodeBinary: '/usr/local/bin/opencode',
-    projects: [{ id: 'p', path: '/home/testuser/project' }], activeProjectId: 'p',
+    projects: [{ id: 'p', path: '/home/testuser/project' }], activeProjectId: 'p', projectFolders: [{ id: 'f1', name: 'Clients', parentId: null, createdAt: 1, updatedAt: 2 }],
     securityScopedBookmarks: ['bookmark'], pinnedDirectories: ['/home/testuser/project'],
     desktopLanAccessEnabled: true, desktopKeepAwakeEnabled: true, desktopMinimizeToTrayEnabled: true, desktopUpdateChannel: 'canary', serverUpdateChannel: 'canary', desktopMacMenuBarEnabled: true, desktopLinuxNativeFrame: true, sidebarShowChatsSection: false, sidebarShowWorkSection: false, sidebarShowPinnedSection: true, sidebarDetailedZoneRows: true, sidebarWorktreeNameByBranch: true,
     desktopUiPassword: 'secret', githubClientId: 'client', githubScopes: 'repo', gitlabClientId: 'gitlab-client', skillCatalogs: [{ id: 'c', label: 'C', source: 'https://x' }],
@@ -1037,6 +1069,7 @@ describe('settings registry gate', () => {
       sanitizeModelRefs: (value) => value,
       sanitizeSkillCatalogs: (value) => value,
       sanitizeProjects: (value) => value,
+      sanitizeProjectFolders: (value) => value,
     });
     const missingFixture = persistableKeys.filter((key) => !(key in validValues));
     expect(missingFixture).toEqual([]);

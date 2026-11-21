@@ -6,6 +6,7 @@ const disclosureOpen = (row: SessionSidebarRow): boolean | null => {
     case 'activity-header':
     case 'caption':
     case 'project-header':
+    case 'project-folder-header':
     case 'group-header':
     case 'folder-header':
       return !row.collapsed;

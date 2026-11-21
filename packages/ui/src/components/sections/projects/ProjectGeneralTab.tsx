@@ -23,6 +23,9 @@ import { ensureSharedSetupTrusted, resetSharedSetupTrust } from '@/lib/sharedTru
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { Icon } from '@/components/icon/Icon';
+import type { ProjectFolder } from '@/lib/projectFolders/tree';
+import { buildProjectFolderTree, flattenProjectFolderTree } from '@/lib/projectFolders/tree';
+import { useProjectsStore } from '@/stores/useProjectsStore';
 import type { useProjectIdentityForm } from './useProjectIdentityForm';
 import type { ProjectSetupState } from './useProjectSetup';
 import { ProjectSetupUnavailable } from './ProjectSettingsBits';
@@ -111,6 +114,52 @@ const ChatDefaultsSection: React.FC<{ form: ProjectIdentityFormState }> = ({ for
           </Select>
         </SettingsFieldRow>
       ) : null}
+    </SettingsSection>
+  );
+};
+
+const NO_FOLDER_VALUE = '__none__';
+
+const flatProjectFolders = (folders: readonly ProjectFolder[]) => (
+  flattenProjectFolderTree(buildProjectFolderTree(folders, new Set()))
+);
+
+const SidebarSection: React.FC<{ projectRef: ProjectRef }> = ({ projectRef }) => {
+  const { t } = useI18n();
+  const folders = useProjectsStore((state) => state.projectFolders);
+  const folderId = useProjectsStore((state) => (
+    state.projects.find((project) => project.id === projectRef.id)?.folderId ?? null
+  ));
+  const moveProjectToFolder = useProjectsStore((state) => state.moveProjectToFolder);
+  const targets = React.useMemo(() => flatProjectFolders(folders), [folders]);
+  if (isVSCodeRuntime() || folders.length === 0) return null;
+
+  return (
+    <SettingsSection title={t('settings.projects.page.section.sidebar')}>
+      <SettingsFieldRow settingsItem="projects.folder" label={t('settings.projects.page.field.projectFolder')}>
+        <Select
+          value={folderId ?? NO_FOLDER_VALUE}
+          onValueChange={(value) => moveProjectToFolder(projectRef.id, value === NO_FOLDER_VALUE ? null : value)}
+        >
+          <SelectTrigger className={SETTINGS_SELECT_ROW_TRIGGER_CLASS} aria-label={t('settings.projects.page.field.projectFolder')}>
+            <SelectValue>
+              {(value: string | undefined) => (
+                value && value !== NO_FOLDER_VALUE
+                  ? folders.find((folder) => folder.id === value)?.name ?? value
+                  : t('settings.projects.page.option.noFolder')
+              )}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_FOLDER_VALUE}>{t('settings.projects.page.option.noFolder')}</SelectItem>
+            {targets.map((node) => (
+              <SelectItem key={node.folder.id} value={node.folder.id}>
+                {'\u00a0\u00a0'.repeat(Math.min(node.depth, 8))}{node.folder.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingsFieldRow>
     </SettingsSection>
   );
 };
@@ -273,6 +322,7 @@ export const ProjectGeneralTab: React.FC<{
 }> = ({ form, projectRef, setupState }) => (
   <>
     <ChatDefaultsSection form={form} />
+    <SidebarSection projectRef={projectRef} />
     {isVSCodeRuntime() ? null : <NotesTodosSection projectRef={projectRef} setupState={setupState} />}
     <TeamFileSection projectRef={projectRef} setupState={setupState} />
   </>

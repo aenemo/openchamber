@@ -7,6 +7,9 @@ import {
   useSessionOrderingStore,
 } from '@/sync/session-ordering';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
+import { useProjectsStore } from '@/stores/useProjectsStore';
+import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
+
 import { useSessionPinnedStore } from '@/stores/useSessionPinnedStore';
 import { resolveGlobalSessionDirectory } from '@/stores/useGlobalSessionsStore';
 import { normalizePath } from '../utils';
@@ -350,6 +353,20 @@ export const useSessionProjectCollection = ({
     [childrenMap, sessionById],
   );
 
+  const projectFolders = useProjectsStore((state) => state.projectFolders);
+  const folderProjects = useProjectsStore((state) => state.projects);
+  const collapsedProjectFolderIds = useSessionDisplayStore((state) => state.collapsedProjectFolderIds);
+  const projectFolderIdByProjectId = React.useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const project of folderProjects) map.set(project.id, project.folderId ?? null);
+    return map;
+  }, [folderProjects]);
+  const projectFolderRows = React.useMemo(() => ({
+    projectFolders,
+    collapsedProjectFolders: collapsedProjectFolderIds,
+    projectFolderIdByProjectId,
+  }), [projectFolders, collapsedProjectFolderIds, projectFolderIdByProjectId]);
+
   return {
     archivedSessions,
     childrenMap,
@@ -360,6 +377,7 @@ export const useSessionProjectCollection = ({
     orderedSessions,
     getTimeOrderedSessions,
     pinnedSessionIds,
+    projectFolderRows,
     sessionOrderRanks,
     sessions,
     rootSessions,

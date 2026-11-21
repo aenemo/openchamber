@@ -17,7 +17,7 @@ import { useUIStore } from '@/stores/useUIStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useChildStoreManager } from '@/sync/sync-context';
 import { MobileSessionRow } from './MobileSessionRow';
-import { MobileFolderRow, MobileGroupHeader, MobileProjectHeader, MobileProjectsCaption, MobileStatusRow, MobileZoneHeader } from './MobileSectionRows';
+import { MobileFolderRow, MobileGroupHeader, MobileProjectFolderRow, MobileProjectHeader, MobileProjectsCaption, MobileStatusRow, MobileZoneHeader } from './MobileSectionRows';
 import { MobileDraftRow, MobileRunRow, MobileWorktreeRow } from './MobileWorkRows';
 import { MOBILE_TREE_GEOMETRY } from './mobileSidebarGeometry';
 import { useMobileSidebarActions, useMobileSidebarRowsStore } from './mobileSidebarState';
@@ -112,6 +112,8 @@ export const MobileSessionList: React.FC<SessionProjectListProps> = ({ model, vi
           : <MobileGroupHeader row={row} geometry={geometry} onToggle={actions.group.onToggleCollapsedGroup} />;
       case 'folder-header':
         return <MobileFolderRow row={row} geometry={geometry} />;
+      case 'project-folder-header':
+        return <MobileProjectFolderRow row={row} geometry={geometry} />;
       case 'session':
         return <MobileSessionRow row={row} geometry={geometry} toggleParent={model.groupProps.toggleParent} />;
       case 'search-result':

@@ -15,6 +15,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { PROJECT_SORT_CHOICES } from '@/components/session/sidebar/list/projectSort';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { Icon } from "@/components/icon/Icon";
@@ -161,13 +162,7 @@ export function SidebarHeader(props: Props): React.ReactNode {
     }));
   }
   if (!timeGrouping) displayMenuSections.push(<>
-    {choiceSubmenu({ labelKey: 'sessions.sidebar.header.actions.sortProjects', icon: 'arrow-up-down' }, [
-      ['manual', 'sessions.sidebar.header.projectSort.manual'],
-      ['a-z', 'sessions.sidebar.header.projectSort.aToZ'],
-      ['z-a', 'sessions.sidebar.header.projectSort.zToA'],
-      ['date-added', 'sessions.sidebar.header.projectSort.dateAdded'],
-      ['recent', 'sessions.sidebar.header.projectSort.recent'],
-    ] as const, projectSortOrder, (order) => {
+    {choiceSubmenu({ labelKey: 'sessions.sidebar.header.actions.sortProjects', icon: 'arrow-up-down' }, PROJECT_SORT_CHOICES, projectSortOrder, (order) => {
       setProjectSortOrder(order);
       void updateDesktopSettings({ sidebarProjectSortOrder: order });
     })}

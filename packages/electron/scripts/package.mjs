@@ -2,20 +2,37 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveDesktopVariant } from '../desktop-variant.mjs';
 import { canaryBuildConfig } from './canary-build-config.mjs';
+import { desktopVariantBuildConfig } from './desktop-variant-build-config.mjs';
 import { resolveTargetArchitecture } from './target-architecture.mjs';
 
 const env = { ...process.env };
 const builderArgs = process.argv.slice(2);
+const packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+const writeBuilderConfig = (fileName, config) => {
+  const configPath = path.join(packageDir, '.cache', fileName);
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  builderArgs.unshift('--config', configPath);
+};
+
+const variant = resolveDesktopVariant(env.OPENCHAMBER_DESKTOP_VARIANT);
+if (variant.variant && env.OPENCHAMBER_DESKTOP_CHANNEL === 'canary') {
+  throw new Error('OPENCHAMBER_DESKTOP_VARIANT cannot be combined with a Canary channel build.');
+}
 
 if (env.OPENCHAMBER_DESKTOP_CHANNEL === 'canary') {
-  const packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const releaseConfig = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')).build;
-  const configPath = path.join(packageDir, '.cache', 'canary-builder-config.json');
-  fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, `${JSON.stringify(canaryBuildConfig(releaseConfig), null, 2)}\n`);
-  builderArgs.unshift('--config', configPath);
+  writeBuilderConfig('canary-builder-config.json', canaryBuildConfig(releaseConfig));
   console.log('[electron] building Canary: the release app with the Canary icons');
+}
+
+if (variant.variant) {
+  const releaseConfig = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')).build;
+  writeBuilderConfig(`variant-${variant.variant}-builder-config.json`, desktopVariantBuildConfig(releaseConfig, variant.variant));
+  console.log(`[electron] building ${variant.appName}: separate app id, profile and data directory`);
 }
 const targetArchitecture = resolveTargetArchitecture({ environment: env, builderArgs });
 

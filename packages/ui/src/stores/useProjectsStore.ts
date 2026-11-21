@@ -4,17 +4,24 @@ import { opencodeClient } from '@/lib/opencode/client';
 import { normalizePath } from '@/lib/pathNormalization';
 import { getRegisteredRuntimeAPIs } from '@/contexts/runtimeAPIRegistry';
 import type { ProjectEntry } from '@/lib/api/types';
+import type { ProjectFolder } from '@/lib/projectFolders/tree';
 import type { DesktopSettings } from '@/lib/desktop';
 import { type SettingsSyncedDetail, updateDesktopSettings } from '@/lib/persistence';
 import { createProjectIdFromPath } from '@/lib/projectId';
-import { parseNonEmptyTrimmedString } from '@/lib/settings/parsers';
+import { parseNonEmptyTrimmedString, parseStringList, parseTrimmedString } from '@/lib/settings/parsers';
 import { getDeferredSafeStorage } from './utils/safeStorage';
+import {
+  createProjectFolderSlice,
+  forgetClosedProjectArtifacts,
+  persistProjectFolders,
+  persistProjects as persistProjectTree,
+  readPersistedProjectFolders,
+  resolveIncomingProjectFolders,
+  type ProjectFolderSlice,
+} from './projectFolders';
 import { useDirectoryStore } from './useDirectoryStore';
 import { streamDebugEnabled } from '@/stores/utils/streamDebug';
 import { COLOR_PRESETS } from '@/lib/colorPresets';
-import { useSessionUIStore } from '@/sync/session-ui-store';
-import { getArchivedScopeKey } from '@/lib/sessionFolders/folderScopes';
-import { useSessionFoldersStore } from './useSessionFoldersStore';
 import { runtimeFetch } from '@/lib/runtime-fetch';
 import { getRuntimeApiBaseUrl, getRuntimeKey } from '@/lib/runtime-switch';
 import { getVSCodeBootstrapConfig } from '@/lib/vscodeBootstrap';
@@ -50,12 +57,13 @@ interface VSCodeWorkspaceFolderConfig {
   path: string;
 }
 
-interface ProjectsStore {
+export interface ProjectsStore extends ProjectFolderSlice {
   hasServerSnapshot: boolean;
   serverSnapshotFailed: boolean;
   projects: ProjectEntry[];
   activeProjectId: string | null;
   manualProjectOrder: string[];
+  projectFolders: ProjectFolder[];
 
   addProject: (path: string, options?: { label?: string; id?: string }) => Promise<ProjectEntry | null>;
   adoptSessionProject: (sessionId: string, directory: string, isCurrent: (directory: string) => boolean) => Promise<string | null>;
@@ -324,6 +332,8 @@ const sanitizeProjects = (value: unknown): ProjectEntry[] => {
     if (typeof candidate.sidebarCollapsed === 'boolean') {
       project.sidebarCollapsed = candidate.sidebarCollapsed;
     }
+    const folderId = parseNonEmptyTrimmedString(candidate.folderId, {});
+    if (folderId) project.folderId = folderId;
     result.push(project);
   }
 
@@ -348,7 +358,7 @@ const readPersistedManualOrder = (): string[] => {
     const raw = safeStorage.getItem(getProjectsStorageKey() + ':manualOrder');
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+    return parseStringList(parsed, {}) ?? [];
   } catch {
     return [];
   }
@@ -389,12 +399,13 @@ const cacheProjects = (projects: ProjectEntry[], activeProjectId: string | null)
   cacheActiveProjectId(activeProjectId);
 };
 
-const persistProjects = (projects: ProjectEntry[], activeProjectId: string | null, manualOrder?: string[]) => {
-  cacheProjects(projects, activeProjectId);
-  if (manualOrder) {
-    persistManualProjectOrder(manualOrder);
+
+const persistManualProjectOrder = (manualOrder: string[]) => {
+  try {
+    safeStorage.setItem(getProjectsStorageKey() + ':manualOrder', JSON.stringify(manualOrder));
+  } catch {
+    // ignored
   }
-  void updateDesktopSettings({ projects, activeProjectId: activeProjectId ?? undefined });
 };
 
 const discoverIconsOnceSaved = async (get: () => ProjectsStore, entries: ProjectEntry[]) => {
@@ -405,13 +416,6 @@ const discoverIconsOnceSaved = async (get: () => ProjectsStore, entries: Project
   }
 };
 
-const persistManualProjectOrder = (manualOrder: string[]) => {
-  try {
-    safeStorage.setItem(getProjectsStorageKey() + ':manualOrder', JSON.stringify(manualOrder));
-  } catch {
-    // ignored
-  }
-};
 
 const initialProjects = readPersistedProjects();
 const normalizeVSCodeWorkspaceFolders = (folders: VSCodeWorkspaceFolderConfig[]): VSCodeWorkspaceFolderConfig[] => {
@@ -463,10 +467,11 @@ const getVSCodeWorkspaceFolders = (): VSCodeWorkspaceFolderConfig[] | null => {
   const folders = Array.isArray(config?.workspaceFolders)
     ? config.workspaceFolders
         .map((entry) => {
+          // SAFETY: workspace config entries arrive as parsed JSON; name and path are revalidated below.
           const candidate = entry as { name?: unknown; path?: unknown };
-          const path = typeof candidate.path === 'string' ? candidate.path.trim() : '';
+          const path = parseTrimmedString(candidate.path, {}) ?? '';
           if (!path) return null;
-          const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
+          const name = parseTrimmedString(candidate.name, {}) ?? '';
           return { name, path };
         })
         .filter((entry): entry is { name: string; path: string } => entry !== null)
@@ -476,8 +481,8 @@ const getVSCodeWorkspaceFolders = (): VSCodeWorkspaceFolderConfig[] | null => {
     return normalizeVSCodeWorkspaceFolders(folders);
   }
 
-  const workspaceFolder = config?.workspaceFolder;
-  if (typeof workspaceFolder !== 'string' || workspaceFolder.trim().length === 0) {
+  const workspaceFolder = parseTrimmedString(config?.workspaceFolder, {});
+  if (!workspaceFolder) {
     return null;
   }
 
@@ -591,6 +596,7 @@ export const useProjectsStore = create<ProjectsStore>()(
     serverSnapshotFailed: false,
     activeProjectId: initialActiveProjectId,
     manualProjectOrder: readPersistedManualOrder(),
+    projectFolders: isVSCodeProjectsRuntime ? [] : readPersistedProjectFolders(),
 
     validateProjectPath: (path: string): ProjectPathValidationResult => {
       if (typeof path !== 'string' || path.trim().length === 0) {
@@ -774,23 +780,10 @@ export const useProjectsStore = create<ProjectsStore>()(
 
       const nextManualOrder = get().manualProjectOrder.filter((oid) => oid !== id);
       set({ projects: nextProjects, activeProjectId: nextActiveId, manualProjectOrder: nextManualOrder });
-      persistProjects(nextProjects, nextActiveId, nextManualOrder);
+      persistProjectTree(nextProjects, nextActiveId, nextManualOrder, undefined, { cacheProjects, persistManualProjectOrder });
 
       if (project) {
-        const normalizedPath = project.path.replace(/\\/g, '/').replace(/\/+$/, '') || '/';
-        const folderRoot = normalizePath(project.path);
-        if (folderRoot) {
-          const worktreeScopes = (useSessionUIStore.getState().availableWorktreesByProject.get(normalizedPath) ?? [])
-            .flatMap((worktree) => normalizePath(worktree.path) ?? []);
-          useSessionFoldersStore.getState().forgetScopes([folderRoot, getArchivedScopeKey(folderRoot), ...worktreeScopes]);
-        }
-        useSessionUIStore.setState((s) => {
-          const next = new Map(s.availableWorktreesByProject);
-          next.delete(normalizedPath);
-          return { availableWorktreesByProject: next };
-        });
-        const label = project.label?.trim() || project.path.split('/').pop() || project.path;
-        void import('@/lib/spaces/space-close').then(({ stopSpacesOfClosedProject }) => stopSpacesOfClosedProject(project.path, label));
+        forgetClosedProjectArtifacts(project);
       }
 
       if (nextActiveId) {
@@ -823,7 +816,7 @@ export const useProjectsStore = create<ProjectsStore>()(
       );
 
       set({ projects: nextProjects, activeProjectId: id });
-      persistProjects(nextProjects, id, get().manualProjectOrder);
+      persistProjectTree(nextProjects, id, get().manualProjectOrder, undefined, { cacheProjects, persistManualProjectOrder });
 
       opencodeClient.setDirectory(target.path);
       useDirectoryStore.getState().setDirectory(target.path, { showOverlay: false });
@@ -860,7 +853,7 @@ export const useProjectsStore = create<ProjectsStore>()(
         project.id === id ? { ...project, label: trimmed, labelSource: 'manual' } : project
       );
       set({ projects: nextProjects });
-      persistProjects(nextProjects, activeProjectId, get().manualProjectOrder);
+      persistProjectTree(nextProjects, activeProjectId, get().manualProjectOrder, undefined, { cacheProjects, persistManualProjectOrder });
     },
 
     updateProjectMeta: (id: string, meta: {
@@ -921,7 +914,7 @@ export const useProjectsStore = create<ProjectsStore>()(
         return updated;
       });
       set({ projects: nextProjects });
-      persistProjects(nextProjects, activeProjectId, get().manualProjectOrder);
+      persistProjectTree(nextProjects, activeProjectId, get().manualProjectOrder, undefined, { cacheProjects, persistManualProjectOrder });
     },
 
     uploadProjectIcon: async (id: string, file: File) => {
@@ -1065,8 +1058,11 @@ export const useProjectsStore = create<ProjectsStore>()(
 
       const newOrder = nextProjects.map((p) => p.id);
       set({ projects: nextProjects, manualProjectOrder: newOrder });
-      persistProjects(nextProjects, activeProjectId, newOrder);
+      persistProjectTree(nextProjects, activeProjectId, newOrder, undefined, { cacheProjects, persistManualProjectOrder });
     },
+
+    ...createProjectFolderSlice(set, get, { isVSCode: isVSCodeProjectsRuntime, cacheProjects, persistManualProjectOrder }),
+
 
     resetForRuntimeSwitch: () => {
       set({ hasServerSnapshot: false, serverSnapshotFailed: false });
@@ -1078,7 +1074,7 @@ export const useProjectsStore = create<ProjectsStore>()(
       const nextActiveProjectId = projects.some((project) => project.id === activeProjectId)
         ? activeProjectId
         : projects[0]?.id ?? null;
-      set({ projects, activeProjectId: nextActiveProjectId, manualProjectOrder: [] });
+      set({ projects, activeProjectId: nextActiveProjectId, manualProjectOrder: [], projectFolders: readPersistedProjectFolders() });
     },
 
     synchronizeFromSettings: (settings: DesktopSettings, options?: { adoptActiveProject?: boolean }) => {
@@ -1087,11 +1083,12 @@ export const useProjectsStore = create<ProjectsStore>()(
       }
       const adoptActiveProject = options?.adoptActiveProject !== false;
       const incomingProjects = sanitizeProjects(settings.projects ?? []);
+      const current = get();
+      const incomingFolders = resolveIncomingProjectFolders(settings, incomingProjects, current);
       const incomingActive = typeof settings.activeProjectId === 'string' && settings.activeProjectId.trim()
         ? settings.activeProjectId.trim()
         : null;
 
-      const current = get();
       const incomingIds = new Set(incomingProjects.map((p) => p.id));
       if (!current.hasServerSnapshot || current.serverSnapshotFailed) set({ hasServerSnapshot: true, serverSnapshotFailed: false });
 
@@ -1103,15 +1100,17 @@ export const useProjectsStore = create<ProjectsStore>()(
 
       const projectsChanged = JSON.stringify(current.projects) !== JSON.stringify(incomingProjects);
       const activeChanged = current.activeProjectId !== nextActive;
+      const foldersChanged = JSON.stringify(current.projectFolders) !== JSON.stringify(incomingFolders);
 
-      if (!projectsChanged && !activeChanged) {
+      if (!projectsChanged && !activeChanged && !foldersChanged) {
         return;
       }
 
       const cleanedOrder = get().manualProjectOrder.filter((id) => incomingIds.has(id));
-      set({ projects: incomingProjects, activeProjectId: nextActive, manualProjectOrder: cleanedOrder });
+      set({ projects: incomingProjects, activeProjectId: nextActive, manualProjectOrder: cleanedOrder, projectFolders: incomingFolders });
       cacheProjects(incomingProjects, nextActive);
       persistManualProjectOrder(cleanedOrder);
+      persistProjectFolders(incomingFolders);
 
       if (activeChanged && nextActive) {
         const activeProject = incomingProjects.find((project) => project.id === nextActive);
@@ -1181,3 +1180,4 @@ if (typeof window !== 'undefined') {
     }
   });
 }
+
