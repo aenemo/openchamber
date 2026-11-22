@@ -97,6 +97,7 @@ export const MobileSessionList: React.FC<SessionProjectListProps> = ({ model, vi
           label={getProjectLabel(project, view.homeDirectory)}
           isRepo={Boolean(model.projectRepoStatus.get(project.id))}
           active={model.groupProps.activeProjectId === project.id}
+          geometry={geometry}
           onToggle={() => actions.toggleProject(project.id)}
           onNewSession={() => {
             actions.setActiveProjectIdOnly(project.id);

@@ -1,7 +1,11 @@
+import type { ProjectEntry } from '@/lib/api/types';
+import { pickDeterministicLeastUsedColor } from '@/lib/colorPresets';
+
 export interface ProjectFolder {
   id: string;
   name: string;
   parentId: string | null;
+  color?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -77,4 +81,25 @@ export const projectFolderIdsInSubtree = (roots: readonly ProjectFolderNode[], r
   };
   visit(roots, false);
   return ids;
+};
+
+export const backfillTopLevelFolderColors = (
+  folders: ProjectFolder[],
+  projects: Pick<ProjectEntry, 'color'>[],
+): ProjectFolder[] => {
+  if (!folders.some((folder) => (folder.parentId ?? null) === null && !folder.color)) {
+    return folders;
+  }
+  const usedColors: (string | null | undefined)[] = [
+    ...projects.map((project) => project.color),
+    ...folders.map((folder) => folder.color),
+  ];
+  return folders.map((folder) => {
+    if ((folder.parentId ?? null) !== null || folder.color) {
+      return folder;
+    }
+    const color = pickDeterministicLeastUsedColor(folder.id, usedColors);
+    usedColors.push(color);
+    return { ...folder, color };
+  });
 };

@@ -8,6 +8,7 @@ import type { SessionSidebarRow } from '@/components/session/sidebar/sessionSide
 import { FileTreeChevron } from '@/components/views/files/FileTreeRowParts';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { resolveProjectColor } from '@/lib/projectMeta';
 import { formatProjectLabel } from '@/components/session/sidebar/utils';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
@@ -87,10 +88,11 @@ export const MobileProjectHeader: React.FC<{
   label: string;
   isRepo: boolean;
   active: boolean;
+  geometry?: MobileTreeGeometry;
   onToggle: () => void;
   onNewSession: () => void;
   onRemove: () => void;
-}> = ({ row, label, isRepo, active, onToggle, onNewSession, onRemove }) => {
+}> = ({ row, label, isRepo, active, geometry, onToggle, onNewSession, onRemove }) => {
   const { t } = useI18n();
   const actions = useMobileSidebarActions();
   const project = row.section.project;
@@ -138,7 +140,7 @@ export const MobileProjectHeader: React.FC<{
           }}
           aria-expanded={!row.collapsed}
           aria-label={row.collapsed ? t('sessions.sidebar.group.expandAria', { label }) : t('sessions.sidebar.group.collapseAria', { label })}
-          style={{ touchAction: 'manipulation' }}
+          style={geometry ? { touchAction: 'manipulation', paddingInlineStart: geometry.slotLeft(row.depth ?? 0) } : { touchAction: 'manipulation' }}
         >
           <MobileProjectIcon project={project} size="xs" />
           <span className="block min-w-0 flex-1 truncate ps-1 typography-ui-label font-medium text-foreground">{label}</span>
@@ -170,7 +172,7 @@ export const MobileGroupHeader: React.FC<{
       style={{ paddingInlineStart: geometry.slotLeft(row.depth), touchAction: 'manipulation' }}
     >
       {row.empty ? <span aria-hidden className="size-3.5 shrink-0" /> : <FileTreeChevron expanded={expanded} />}
-      <Icon name="folder" className="mx-px size-3 shrink-0 text-muted-foreground" />
+      <Icon name={expanded && !row.empty ? 'folder-open' : 'folder'} className="mx-px size-3 shrink-0 text-muted-foreground" />
       <span className="block min-w-0 flex-1 truncate typography-ui-label font-medium oc-group-label">{label}</span>
     </button>
   );
@@ -182,10 +184,13 @@ export const MobileProjectFolderRow: React.FC<{
 }> = ({ row, geometry }) => {
   const { t } = useI18n();
   const expanded = !row.collapsed;
+  const isTopLevelFolder = row.folder.parentId == null;
+  const topLevelFolderColor = isTopLevelFolder ? resolveProjectColor(row.folder.color) : null;
+  const showHomeFolderIcon = isTopLevelFolder && Boolean(row.folder.color);
   return (
     <button
       type="button"
-      className="flex min-h-10 w-full items-center gap-0.5 py-1 pe-3 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      className="relative flex min-h-10 w-full items-center gap-0.5 py-1 pe-3 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       onClick={() => {
         if (!putAwayRevealed()) useSessionDisplayStore.getState().toggleCollapsedProjectFolder(row.folder.id);
       }}
@@ -195,8 +200,18 @@ export const MobileProjectFolderRow: React.FC<{
         : t('sessions.sidebar.folderItem.expandAria', { folderName: row.folder.name })}
       style={{ paddingInlineStart: geometry.slotLeft(row.depth), touchAction: 'manipulation' }}
     >
-      <FileTreeChevron expanded={expanded} />
-      <Icon name="folder" className="mx-px size-3 shrink-0 text-muted-foreground" />
+      <span className="absolute top-1/2 -translate-y-1/2" style={{ insetInlineStart: -16 }}>
+        <FileTreeChevron expanded={expanded} />
+      </span>
+      {showHomeFolderIcon ? (
+        <Icon
+          name="home"
+          className={cn('size-3 shrink-0', expanded && 'rotate-90')}
+          style={topLevelFolderColor ? { color: topLevelFolderColor } : undefined}
+        />
+      ) : (
+        <Icon name={expanded ? 'folder-open' : 'folder'} className="size-3 shrink-0 text-muted-foreground" />
+      )}
       <span className="block min-w-0 flex-1 truncate typography-ui-label font-medium oc-group-label">{row.folder.name}</span>
       {row.projectCount > 0 ? <span className="shrink-0 typography-micro text-muted-foreground">{row.projectCount}</span> : null}
     </button>

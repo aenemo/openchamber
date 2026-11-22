@@ -76,7 +76,7 @@ type RowBase = { key: string; estimateSize: number; treeGuides?: readonly Sessio
 
 export type SessionSidebarRow =
   | (RowBase & { kind: 'activity-header'; activityKey: SessionSidebarActivityKey; collapsed: boolean; label?: string; preview?: boolean; loading?: boolean })
-  | (RowBase & { kind: 'project-header'; section: ProjectSection; collapsed: boolean })
+  | (RowBase & { kind: 'project-header'; section: ProjectSection; collapsed: boolean; depth?: number })
   | (RowBase & { kind: 'project-folder-header'; folder: ProjectFolder; depth: number; collapsed: boolean; projectCount: number })
   | (RowBase & { kind: 'caption'; caption: 'projects' | `section:${string}`; collapsed: boolean; label?: string; preview?: boolean })
   | (RowBase & { kind: 'group-header'; group: SessionGroup; groupKey: string; projectId: string | null; collapsed: boolean; empty: boolean; allSessions: readonly Session[]; depth: number; mixed: boolean; detailed: boolean })
@@ -614,7 +614,7 @@ export const buildSessionSidebarRowModel = (args: SessionSidebarRowModelArgs): S
     if (projectId && isGroupWork(group) && !selectionWorks.has(groupKey)) selectionWorks.set(groupKey, Object.freeze({ group, projectId }));
     const ownerKey = getGroupFolderOwnerKey(projectId, group);
     const storedCollapsed = args.collapsedGroups.has(groupKey);
-    const contentDepth = hideHeader ? 0 : placement.depth + 1;
+    const contentDepth = hideHeader ? placement.depth : placement.depth + 1;
     const status = args.groupStatusByKey.get(groupKey);
     const groupLoaded = !status || status.state === 'ready';
     const groupDrafts = args.draftsByGroupKey?.get(groupKey) ?? EMPTY_DRAFTS;

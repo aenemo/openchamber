@@ -53,18 +53,22 @@ const renderCaptionMenu = async (options: { caption?: string; mobileVariant?: bo
     </ThemeSystemProvider>,
   ));
   const toggleButton = () => container.querySelector('button');
+  const addButton = () => container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]');
   const openMenu = async () => {
     await act(async () => {
       toggleButton()?.dispatchEvent(new Event('contextmenu', { bubbles: true, cancelable: true }));
     });
   };
   const menuItems = () => Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+  const openAddMenu = async () => {
+    await act(async () => { addButton()?.click(); });
+  };
   const cleanup = async () => {
     await act(async () => root.unmount());
     container.remove();
     await restore();
   };
-  return { openMenu, menuItems, toggleButton, toggled: () => toggled, persistCalls, cleanup };
+  return { openMenu, menuItems, toggleButton, addButton, openAddMenu, toggled: () => toggled, persistCalls, cleanup };
 };
 
 test('right-clicking the projects caption lists the six sort orders plus new folder and keeps left-click toggle', async () => {
@@ -122,6 +126,58 @@ test('the caption menu creates a root project folder from its new folder item', 
       expect(folders[0]?.parentId).toBe(null);
     } finally {
       useProjectsStore.setState(previous, true);
+    }
+  } finally {
+    await menu.cleanup();
+  }
+});
+
+test('the projects add button offers Add project and New folder', async () => {
+  const menu = await renderCaptionMenu();
+  try {
+    expect(menu.addButton()?.getAttribute('aria-label')).toBe('Add project');
+    await menu.openAddMenu();
+    expect(menu.menuItems().map((item) => item.textContent?.trim())).toEqual(['Add project', 'New folder...']);
+  } finally {
+    await menu.cleanup();
+  }
+});
+
+test('picking New folder from the projects add button creates a root project folder', async () => {
+  const menu = await renderCaptionMenu();
+  try {
+    const { useProjectsStore } = await import('@/stores/useProjectsStore');
+    const previous = useProjectsStore.getState();
+    try {
+      useProjectsStore.setState({ projects: [], activeProjectId: null, manualProjectOrder: [], projectFolders: [] });
+      await menu.openAddMenu();
+      const item = menu.menuItems().find((entry) => entry.textContent?.trim() === 'New folder...');
+      await act(async () => { item?.click(); });
+      const folders = useProjectsStore.getState().projectFolders;
+      expect(folders.length).toBe(1);
+      expect(folders[0]?.name).toBe('New folder');
+      expect(folders[0]?.parentId).toBe(null);
+    } finally {
+      useProjectsStore.setState(previous, true);
+    }
+  } finally {
+    await menu.cleanup();
+  }
+});
+
+test('picking Add project from the projects add button opens the directory dialog', async () => {
+  const menu = await renderCaptionMenu();
+  try {
+    const { sessionEvents } = await import('@/lib/sessionEvents');
+    let requests = 0;
+    const unsubscribe = sessionEvents.onDirectoryRequest(() => { requests += 1; });
+    try {
+      await menu.openAddMenu();
+      const item = menu.menuItems().find((entry) => entry.textContent?.trim() === 'Add project');
+      await act(async () => { item?.click(); });
+      expect(requests).toBe(1);
+    } finally {
+      unsubscribe();
     }
   } finally {
     await menu.cleanup();

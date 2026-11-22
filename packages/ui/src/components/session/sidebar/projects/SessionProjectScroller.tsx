@@ -398,6 +398,7 @@ function SessionProjectScrollerComponent({ model, view, actions }: SessionProjec
         isCollapsed={row.collapsed} isRepo={Boolean(model.projectRepoStatus.get(project.id))}
         hideDirectoryControls={view.hideDirectoryControls}
         mobileVariant={view.mobileVariant} alwaysShowActions={view.alwaysShowActions}
+        depth={row.depth ?? 0}
         statusIndicator={row.collapsed ? actions.renderProjectStatusIndicator?.(project.id, row.section.groups) : null}
         openSidebarMenuKey={model.state.openSidebarMenuKey} setOpenSidebarMenuKey={model.state.setOpenSidebarMenuKey}
         projectPickerOptions={model.singleProjectMode ? projectPickerOptions : undefined}

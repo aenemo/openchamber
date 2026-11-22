@@ -7,29 +7,75 @@ import type { SessionSidebarActivityKey } from './sessionSidebarRowModel';
 import { ACTIVITY_TITLE_KEY, isBuiltinActivityKey } from './sessionSidebarActivityLabels';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { TooltipLabelWithShortcut } from '@/components/ui/action-toolbar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { formatShortcutForDisplay, getEffectiveShortcutCombo } from '@/lib/shortcuts';
 import { sessionEvents } from '@/lib/sessionEvents';
+import { isVSCodeRuntime } from '@/lib/desktop';
+import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useUIStore } from '@/stores/useUIStore';
+
+const ADD_BUTTON_CLASS_NAME = 'absolute inset-e-0.5 top-1/2 z-10 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50';
 
 const AddProjectButton: React.FC = () => {
   const { t } = useI18n();
   const shortcutOverrides = useUIStore((state) => state.shortcutOverrides);
+  const addProjectFolder = useProjectsStore((state) => state.addProjectFolder);
+  const canCreateFolder = React.useMemo(() => !isVSCodeRuntime(), []);
   const label = t('sessions.sidebar.header.actions.addProject');
-  return <Tooltip>
-    <TooltipTrigger asChild>
-      <button
-        type="button"
-        onClick={(event) => { event.stopPropagation(); sessionEvents.requestDirectoryDialog(); }}
-        className="absolute inset-e-0.5 top-1/2 z-10 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-        aria-label={label}
-      >
-        <Icon name="add" className="h-4 w-4" />
-      </button>
-    </TooltipTrigger>
-    <TooltipContent side="top">
-      <TooltipLabelWithShortcut label={label} shortcut={formatShortcutForDisplay(getEffectiveShortcutCombo('add_project', shortcutOverrides), '')} />
-    </TooltipContent>
-  </Tooltip>;
+  const tooltip = <TooltipContent side="top">
+    <TooltipLabelWithShortcut label={label} shortcut={formatShortcutForDisplay(getEffectiveShortcutCombo('add_project', shortcutOverrides), '')} />
+  </TooltipContent>;
+
+  if (!canCreateFolder) {
+    return <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={(event) => { event.stopPropagation(); sessionEvents.requestDirectoryDialog(); }}
+          className={ADD_BUTTON_CLASS_NAME}
+          aria-label={label}
+        >
+          <Icon name="add" className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      {tooltip}
+    </Tooltip>;
+  }
+
+  return <DropdownMenu>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            onClick={(event) => { event.stopPropagation(); }}
+            className={ADD_BUTTON_CLASS_NAME}
+            aria-label={label}
+          >
+            <Icon name="add" className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+      </TooltipTrigger>
+      {tooltip}
+    </Tooltip>
+    <DropdownMenuContent align="end" side="bottom" className="min-w-[180px]">
+      <DropdownMenuItem onClick={() => sessionEvents.requestDirectoryDialog()}>
+        <Icon name="add" className="me-1.5 h-4 w-4" />
+        {label}
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onClick={() => addProjectFolder(t('sessions.sidebar.folder.newFolderName'), null)}>
+        <Icon name="folder-add" className="me-1.5 h-4 w-4" />
+        {t('sessions.sidebar.folders.newFolderEllipsis')}
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  </DropdownMenu>;
 };
 
 const PreviewMark: React.FC = () => {

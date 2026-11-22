@@ -26,6 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Icon } from '@/components/icon/Icon';
 import { toast } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { resolveProjectColor } from '@/lib/projectMeta';
 import { useI18n } from '@/lib/i18n';
 import type { ProjectFolder } from '@/lib/projectFolders/tree';
 import {
@@ -225,6 +226,10 @@ export const ProjectFolderHeader: React.FC<ProjectFolderHeaderProps> = ({
     setRenaming(false);
   }, [draft, folder.id, folder.name, renameProjectFolder]);
 
+  const isTopLevelFolder = folder.parentId == null;
+  const topLevelFolderColor = isTopLevelFolder ? resolveProjectColor(folder.color) : null;
+  const showHomeFolderIcon = isTopLevelFolder && Boolean(folder.color);
+
   const menuItems = (Item: React.ElementType, Separator: React.ElementType) => (
     <>
       <Item onClick={() => addProjectFolder(t('sessions.sidebar.folder.newFolderName'), folder.id)}>
@@ -244,7 +249,7 @@ export const ProjectFolderHeader: React.FC<ProjectFolderHeaderProps> = ({
   );
 
   return (
-    <div ref={setNodeRef} className="relative -ms-2.5 -me-2" style={{ paddingInlineStart: depth * FOLDER_INDENT_PX }}>
+    <div ref={setNodeRef} className="relative -ms-2.5 -me-2" style={{ paddingInlineStart: Math.min(Math.max(depth, 0), 8) * FOLDER_INDENT_PX }}>
       <ContextMenu>
         <ContextMenuTrigger
           render={
@@ -276,18 +281,27 @@ export const ProjectFolderHeader: React.FC<ProjectFolderHeaderProps> = ({
               onClick={() => toggleCollapsedProjectFolder(folder.id)}
               aria-expanded={!collapsed}
               className={cn(
-                'flex min-w-0 flex-1 items-center gap-1 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+                'relative flex min-w-0 flex-1 items-center gap-1 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
                 mobileVariant && 'min-h-10',
               )}
             >
               <Icon
                 name={collapsed ? 'arrow-right-s' : 'arrow-down-s'}
                 className={cn(
-                  'h-3.5 w-3.5 shrink-0 text-muted-foreground',
+                  'absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground',
                   collapsed || alwaysShowActions ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 group-focus-visible/folder:opacity-100',
                 )}
+                style={{ insetInlineStart: -FOLDER_BASE_INSET_PX }}
               />
-              <Icon name="folder" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {showHomeFolderIcon ? (
+                <Icon
+                  name="home"
+                  className={cn('h-3.5 w-3.5 shrink-0', !collapsed && 'rotate-90')}
+                  style={topLevelFolderColor ? { color: topLevelFolderColor } : undefined}
+                />
+              ) : (
+                <Icon name={collapsed ? 'folder' : 'folder-open'} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              )}
               <span className="min-w-0 truncate typography-ui-label font-medium text-foreground" dir="auto">{folder.name}</span>
               {projectCount > 0 ? <span data-project-folder-count className="shrink-0 typography-micro text-muted-foreground">{projectCount}</span> : null}
             </button>

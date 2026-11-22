@@ -1238,11 +1238,15 @@ membership, and a sidebar with only pages still shows its empty state.
 
 Adding a project has four ways in, all `sessionEvents.requestDirectoryDialog()`:
 the "+" at the end of the Projects caption (and of the list by time's caption),
-always shown with its tooltip and shortcut; the last item of the composer's
+always shown with its tooltip and shortcut, which opens a menu holding Add
+project and, outside VS Code, New folder…; the last item of the composer's
 project picker (Add project…, desktop popup and phone sheet); the `add_project`
 shortcut (`mod+k o` by default, the leader's "open" key); and the new-install
-empty state's Add project button under its two lines. A group of projects the
-user made has no "+".
+empty state's Add project button under its two lines. Choosing New folder…
+creates a root project folder with the default name, the same action as the
+caption's context menu; VS Code has no folders, so there the "+" opens the
+directory dialog directly instead of a menu. A group of projects the user made
+has no "+".
 
 Queries beginning with `ses_` match only the full session ID,
 case-insensitively and ignoring surrounding whitespace. Partial IDs and typos
@@ -1729,6 +1733,15 @@ the deleted folder's parent when its projects are closed. Only the deleted
 folder's own projects move or close, so closing a folder never closes a
 child's projects. Undo is offered only when projects moved, because closing
 destroys session scopes and spaces that the tree snapshot cannot restore.
+
+A folder header's collapse chevron floats in the row's leading gutter instead
+of sitting in flow, so a folder's icon starts at the same inset as a project
+icon at the same depth, and members sit exactly one indent step right of
+their parent folder's icon; the phone rows follow the same rule. New
+top-level folders get a palette color and a home icon, and folders stored
+before colors existed are backfilled with the least-used color on load (nested
+folders keep the gray glyph), which is why old top-level folders gain a home
+icon after an upgrade.
 
 ### Why the list keeps the row the user sees and not the scroll position
 

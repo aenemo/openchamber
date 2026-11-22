@@ -150,6 +150,7 @@ interface SortableProjectItemProps extends ProjectIdentityProps {
   children?: React.ReactNode;
   showCreateButtons?: boolean;
   hideHeader?: boolean;
+  depth?: number;
   statusIndicator?: React.ReactNode;
   openSidebarMenuKey: string | null;
   setOpenSidebarMenuKey: (key: string | null) => void;
@@ -190,6 +191,7 @@ export const SortableProjectItem: React.FC<SortableProjectItemProps> = ({
   children,
   showCreateButtons = true,
   hideHeader = false,
+  depth = 0,
   statusIndicator = null,
   openSidebarMenuKey,
   setOpenSidebarMenuKey,
@@ -381,7 +383,11 @@ export const SortableProjectItem: React.FC<SortableProjectItemProps> = ({
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Translate.toString(transform), transition }}
+      style={{
+        transform: CSS.Translate.toString(transform),
+        transition,
+        paddingInlineStart: Math.min(Math.max(depth, 0), 8) * 12,
+      }}
       className={cn('relative', isDragging && 'opacity-0')}
     >
       {!hideHeader ? (

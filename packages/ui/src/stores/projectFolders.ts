@@ -3,6 +3,7 @@ import { opencodeClient } from '@/lib/opencode/client';
 import { normalizePath } from '@/lib/pathNormalization';
 import { getRuntimeApiBaseUrl } from '@/lib/runtime-switch';
 import { createProjectFolderId } from '@/lib/projectId';
+import { pickDeterministicLeastUsedColor } from '@/lib/colorPresets';
 import { parseProjectFolders } from '@/lib/settings/parsers';
 import type { ProjectEntry } from '@/lib/api/types';
 import type { ProjectFolder } from '@/lib/projectFolders/tree';
@@ -130,6 +131,13 @@ export const resolveIncomingProjectFolders = (
     ? parseProjectFolders(settings.projectFolders ?? [], settings) ?? []
     : current.projectFolders;
   const incomingFolderIds = new Set(incomingFolders.map((folder) => folder.id));
+  const settledColorById = new Map(current.projectFolders.map((folder) => [folder.id, folder.color]));
+  for (const folder of incomingFolders) {
+    if (!folder.color) {
+      const settled = settledColorById.get(folder.id);
+      if (settled) folder.color = settled;
+    }
+  }
   for (const project of incomingProjects) {
     if (project.folderId && !incomingFolderIds.has(project.folderId)) {
       delete project.folderId;
@@ -197,6 +205,12 @@ export const createProjectFolderSlice = (
       createdAt: now,
       updatedAt: now,
     };
+    if (targetParent === null) {
+      folder.color = pickDeterministicLeastUsedColor(folder.id, [
+        ...projects.map((project) => project.color),
+        ...projectFolders.map((entry) => entry.color),
+      ]);
+    }
     const nextFolders = [...projectFolders, folder];
     set({ projectFolders: nextFolders });
     persistProjectFolders(nextFolders);

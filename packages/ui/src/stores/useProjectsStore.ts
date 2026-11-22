@@ -15,13 +15,13 @@ import {
   forgetClosedProjectArtifacts,
   persistProjectFolders,
   persistProjects as persistProjectTree,
-  readPersistedProjectFolders,
   resolveIncomingProjectFolders,
   type ProjectFolderSlice,
 } from './projectFolders';
+import { loadInitialProjectFoldersWithBackfill, pushBackfilledFoldersForConvergence, resolveSyncFoldersWithBackfill } from '@/lib/projectFolders/folderColors';
 import { useDirectoryStore } from './useDirectoryStore';
 import { streamDebugEnabled } from '@/stores/utils/streamDebug';
-import { COLOR_PRESETS } from '@/lib/colorPresets';
+import { pickLeastUsedColor } from '@/lib/colorPresets';
 import { runtimeFetch } from '@/lib/runtime-fetch';
 import { getRuntimeApiBaseUrl, getRuntimeKey } from '@/lib/runtime-switch';
 import { getVSCodeBootstrapConfig } from '@/lib/vscodeBootstrap';
@@ -30,21 +30,9 @@ import { z } from 'zod';
 import { requestOpenCodeTrust } from '@/lib/opencodeTrust';
 import { runBackgroundNetworkTask } from '@/lib/background-network';
 
-const pickAutoColor = (projects: ProjectEntry[]): string => {
-  const colorKeys: string[] = [...COLOR_PRESETS];
-  const usageCounts = new Map<string, number>();
-  for (const key of colorKeys) {
-    usageCounts.set(key, 0);
-  }
-  for (const p of projects) {
-    if (p.color && usageCounts.has(p.color)) {
-      usageCounts.set(p.color, (usageCounts.get(p.color) ?? 0) + 1);
-    }
-  }
-  const minUsage = Math.min(...usageCounts.values());
-  const candidates = colorKeys.filter((k) => usageCounts.get(k) === minUsage);
-  return candidates[Math.floor(Math.random() * candidates.length)];
-};
+const pickAutoColor = (projects: ProjectEntry[]): string => (
+  pickLeastUsedColor(projects.map((project) => project.color))
+);
 
 interface ProjectPathValidationResult {
   ok: boolean;
@@ -589,6 +577,8 @@ if (vscodeWorkspace) {
   cacheProjects(effectiveInitialProjects, initialActiveProjectId);
 }
 
+const initialProjectFolders = loadInitialProjectFoldersWithBackfill(effectiveInitialProjects, isVSCodeProjectsRuntime);
+
 export const useProjectsStore = create<ProjectsStore>()(
   devtools((set, get) => ({
     projects: effectiveInitialProjects,
@@ -596,7 +586,7 @@ export const useProjectsStore = create<ProjectsStore>()(
     serverSnapshotFailed: false,
     activeProjectId: initialActiveProjectId,
     manualProjectOrder: readPersistedManualOrder(),
-    projectFolders: isVSCodeProjectsRuntime ? [] : readPersistedProjectFolders(),
+    projectFolders: initialProjectFolders,
 
     validateProjectPath: (path: string): ProjectPathValidationResult => {
       if (typeof path !== 'string' || path.trim().length === 0) {
@@ -1074,7 +1064,7 @@ export const useProjectsStore = create<ProjectsStore>()(
       const nextActiveProjectId = projects.some((project) => project.id === activeProjectId)
         ? activeProjectId
         : projects[0]?.id ?? null;
-      set({ projects, activeProjectId: nextActiveProjectId, manualProjectOrder: [], projectFolders: readPersistedProjectFolders() });
+      set({ projects, activeProjectId: nextActiveProjectId, manualProjectOrder: [], projectFolders: loadInitialProjectFoldersWithBackfill(projects, isVSCodeProjectsRuntime) });
     },
 
     synchronizeFromSettings: (settings: DesktopSettings, options?: { adoptActiveProject?: boolean }) => {
@@ -1085,6 +1075,7 @@ export const useProjectsStore = create<ProjectsStore>()(
       const incomingProjects = sanitizeProjects(settings.projects ?? []);
       const current = get();
       const incomingFolders = resolveIncomingProjectFolders(settings, incomingProjects, current);
+      const { folders: backfilledFolders, didBackfill } = resolveSyncFoldersWithBackfill(incomingFolders, incomingProjects);
       const incomingActive = typeof settings.activeProjectId === 'string' && settings.activeProjectId.trim()
         ? settings.activeProjectId.trim()
         : null;
@@ -1100,17 +1091,20 @@ export const useProjectsStore = create<ProjectsStore>()(
 
       const projectsChanged = JSON.stringify(current.projects) !== JSON.stringify(incomingProjects);
       const activeChanged = current.activeProjectId !== nextActive;
-      const foldersChanged = JSON.stringify(current.projectFolders) !== JSON.stringify(incomingFolders);
+      const foldersChanged = JSON.stringify(current.projectFolders) !== JSON.stringify(backfilledFolders);
 
       if (!projectsChanged && !activeChanged && !foldersChanged) {
         return;
       }
 
       const cleanedOrder = get().manualProjectOrder.filter((id) => incomingIds.has(id));
-      set({ projects: incomingProjects, activeProjectId: nextActive, manualProjectOrder: cleanedOrder, projectFolders: incomingFolders });
+      set({ projects: incomingProjects, activeProjectId: nextActive, manualProjectOrder: cleanedOrder, projectFolders: backfilledFolders });
       cacheProjects(incomingProjects, nextActive);
       persistManualProjectOrder(cleanedOrder);
-      persistProjectFolders(incomingFolders);
+      persistProjectFolders(backfilledFolders);
+      if (didBackfill) {
+        pushBackfilledFoldersForConvergence(backfilledFolders);
+      }
 
       if (activeChanged && nextActive) {
         const activeProject = incomingProjects.find((project) => project.id === nextActive);

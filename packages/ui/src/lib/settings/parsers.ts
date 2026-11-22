@@ -393,6 +393,7 @@ const projectFolderSchema = z.object({
   id: nonEmptyTrimmed,
   name: trimmed.transform((value) => value.slice(0, 80)).pipe(z.string().min(1)),
   parentId: z.union([nonEmptyTrimmed, z.null()]).optional().catch(undefined),
+  color: z.union([nonEmptyTrimmed, z.null()]).optional().catch(undefined),
   createdAt: nonNegativeFinite.transform(Math.round).optional().catch(undefined),
   updatedAt: nonNegativeFinite.transform(Math.round).optional().catch(undefined),
 });
@@ -405,13 +406,17 @@ export const parseProjectFolders = fromSchema(
       const parsed = projectFolderSchema.safeParse(entry);
       if (!parsed.success || seenIds.has(parsed.data.id)) continue;
       seenIds.add(parsed.data.id);
-      folders.push({
+      const folder: ProjectFolder = {
         id: parsed.data.id,
         name: parsed.data.name,
         parentId: parsed.data.parentId ?? null,
         createdAt: parsed.data.createdAt ?? 0,
         updatedAt: parsed.data.updatedAt ?? 0,
-      });
+      };
+      if (typeof parsed.data.color === 'string') {
+        folder.color = parsed.data.color;
+      }
+      folders.push(folder);
     }
     const byId = new Map(folders.map((folder) => [folder.id, folder]));
     for (const folder of folders) {

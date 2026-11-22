@@ -63,11 +63,13 @@ export const appendProjectsCaption = (host: ProjectFolderRowsHost, caption: Proj
   return captionCollapsed;
 };
 
-export const appendProjectSectionRows = (host: ProjectFolderRowsHost, section: ProjectSection): void => {
+export const appendProjectSectionRows = (host: ProjectFolderRowsHost, section: ProjectSection, depth = 0): void => {
   const descriptors = buildGroupRenderDescriptors(section, { mainWorkspaceOnly: host.args.showOnlyMainWorkspace });
   const projectCollapsed = !host.args.singleProjectMode
     && !host.args.showOnlyMainWorkspace
     && host.args.collapsedProjects.has(section.project.id);
+  const projectDepth = Math.min(Math.max(depth, 0), 8);
+  const placement: GroupPlacement = { ...host.projectPlacement, depth: host.projectPlacement.depth + projectDepth };
   if (!host.args.showOnlyMainWorkspace) {
     const rowIndex = host.rows.length;
     host.push({
@@ -76,6 +78,7 @@ export const appendProjectSectionRows = (host: ProjectFolderRowsHost, section: P
       estimateSize: host.sectionHeaderEstimateSize,
       section,
       collapsed: projectCollapsed,
+      depth: projectDepth,
     });
     host.stickyHeaders.push(Object.freeze({ rowIndex, kind: 'project', id: section.project.id }));
   }
@@ -96,7 +99,7 @@ export const appendProjectSectionRows = (host: ProjectFolderRowsHost, section: P
       descriptor.projectId,
       descriptor.hideGroupLabel,
       undefined,
-      host.projectPlacement,
+      placement,
       descriptor.group.isMain ? worktreesByMemberId : undefined,
       descriptor.group.isMain ? listedWorktrees : undefined,
     );
@@ -150,11 +153,11 @@ const appendFolderedProjectSections = (
       projectCount: countSubtreeProjects(sectionsByFolderId, node),
     });
     if (node.collapsed) return;
-    for (const section of members) appendProjectSectionRows(host, section);
+    for (const section of members) appendProjectSectionRows(host, section, node.depth + 1);
     for (const child of node.children) emitFolderNode(child);
   };
   for (const root of folderRoots) emitFolderNode(root);
-  for (const section of sectionsByFolderId.get(null) ?? []) appendProjectSectionRows(host, section);
+  for (const section of sectionsByFolderId.get(null) ?? []) appendProjectSectionRows(host, section, 0);
 };
 
 export const appendMaybeFolderedProjectSections = (

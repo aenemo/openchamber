@@ -313,7 +313,7 @@ describe("useProjectsStore project labels", () => {
 })
 
 describe("useProjectsStore project folders", () => {
-  const seed = (projects: ProjectEntry[] = [], folders: { id: string; name: string; parentId?: string | null }[] = []) => {
+  const seed = (projects: ProjectEntry[] = [], folders: { id: string; name: string; parentId?: string | null; color?: string }[] = []) => {
     useProjectsStore.setState({
       projects,
       activeProjectId: projects[0]?.id ?? null,
@@ -553,7 +553,7 @@ describe("useProjectsStore project folders", () => {
       const [seeded] = [{ path: "/repo", folderId: "kept" }]
       seed(
         [{ id: createProjectIdFromPath("/repo"), ...seeded }],
-        [{ id: "kept", name: "Kept" }],
+        [{ id: "kept", name: "Kept", color: "#e5484d" }],
       )
       const folders = useProjectsStore.getState().projectFolders
       // SAFETY: the sync reads only projects here; the missing key is the case under test.
