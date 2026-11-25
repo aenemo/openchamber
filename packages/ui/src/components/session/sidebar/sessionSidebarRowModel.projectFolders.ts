@@ -169,12 +169,6 @@ export const appendMaybeFolderedProjectSections = (
     ? folderedProjectSections(host, projectSections)
     : null;
   if (!foldered) return false;
-  const captioned = !caption.always
-    && (!host.args.projectsCaption
-      || host.args.singleProjectMode
-      || host.args.showOnlyMainWorkspace
-      || (host.rows.length === 0 && !host.args.projectsCaptionAtTop));
-  if (!captioned && appendProjectsCaption(host, caption)) return true;
   appendFolderedProjectSections(host, foldered.roots, foldered.sectionsByFolderId);
   return true;
 };

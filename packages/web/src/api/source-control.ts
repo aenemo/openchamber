@@ -41,6 +41,7 @@ import type {
   SetDiscussionAnswerInput,
   SetDiscussionStateInput,
   SetStateInput,
+  IssueCloseReason,
   SetLabelsInput,
   SetReviewersInput,
   ThreadReplyInput,
@@ -81,12 +82,17 @@ import type {
 } from '@openchamber/ui/lib/api/types';
 import { SourceControlInstanceAliasError, SourceControlInstanceOtherProviderError } from '@openchamber/ui/lib/api/types';
 import { runtimeFetch } from '@openchamber/ui/lib/runtime-fetch';
+import { createItemWrites, writeFlags } from './source-control-item-writes';
 import type { RuntimeFetchOptions } from '@openchamber/ui/lib/runtime-fetch';
-import { isSafeRepositoryEndpoint, parseBindingResponse, resolveBindingReadiness } from '../../server/lib/source-control/binding-contract.js';
+import { parseBindingResponse, resolveBindingReadiness } from '../../server/lib/source-control/binding-contract.js';
 import { isExtensionProviderId, isProviderUserId } from '../../server/lib/source-control/provider-id.js';
 import type { SourceControlProviderDescriptor } from '@openchamber/ui/lib/source-control/providers/descriptor';
 import { fetchChangeRequestListStatuses, fetchChangeRequestReviewState, fetchRepositoryReferenceDetail, fetchRepositoryReferences, fetchRepositoryReferencesAcross } from './repository-references';
+import { isHttpUrl, parseSourceReferenceLinks } from './source-reference-link';
+import { parseRepositoryRemote } from './repository-remote';
 import { BUILT_IN_SOURCE_CONTROL_PROVIDERS, fetchSourceControlProviders, providerPath } from './source-control-providers';
+import { parseReviewerStates } from './review-state';
+import { isBooleanValue, isNonEmptyString, isNumberValue, isPositiveSafeInteger, isStringValue, type BoundaryScalar } from './boundary-guards';
 
 interface ErrorResponse {
   error?: string;
@@ -171,7 +177,7 @@ interface UpdateBody extends MutationBody<SourceControlExistingMutationTarget> {
   body?: string;
 }
 
-interface MutationReceiptDTO extends ErrorResponse {
+export interface MutationReceiptDTO extends ErrorResponse {
   status: string;
   actor: { provider: string; instance: string; providerAccountId: string };
   target: {
@@ -205,7 +211,7 @@ type ReviewBody = MutationBody<SourceControlExistingMutationTarget> & { body?: s
   | { votes: Record<string, number>; publishDrafts?: boolean }
 );
 
-type SourceControlFetch = (input: string, init?: RuntimeFetchOptions) => Promise<Response>;
+export type SourceControlFetch = (input: string, init?: RuntimeFetchOptions) => Promise<Response>;
 type PostBody =
   | { flowId: string }
   | { token: string; username?: string }
@@ -218,8 +224,9 @@ type PostBody =
   | (MutationBody<SourceControlExistingMutationTarget> & { body: string })
   | (MutationBody<SourceControlExistingMutationTarget> & { threadId: string; body: string })
   | (MutationBody<SourceControlExistingMutationTarget> & { threadId: string; resolved: boolean })
-  | (MutationBody<SourceControlExistingMutationTarget> & { state: SetStateInput['state'] })
+  | (MutationBody<SourceControlExistingMutationTarget> & { state: SetStateInput['state']; reason?: IssueCloseReason })
   | (MutationBody<SourceControlExistingMutationTarget> & { labels: string[] })
+  | (MutationBody<SourceControlExistingMutationTarget> & { assignees: string[] })
   | (MutationBody<SourceControlExistingMutationTarget> & { reviewers: string[] })
   | (MutationBody<SourceControlExistingMutationTarget> & { body: string; replyTo?: string })
   | (MutationBody<SourceControlExistingMutationTarget> & { state: SetDiscussionStateInput['state']; reason?: DiscussionCloseReason })
@@ -288,7 +295,7 @@ const normalizeHostInstance = (identity: SourceControlIdentity): SourceControlId
   return { provider: identity.provider, instance: host };
 };
 
-const normalizeIdentity = (identity: SourceControlIdentity): SourceControlIdentity => {
+export const normalizeIdentity = (identity: SourceControlIdentity): SourceControlIdentity => {
   const normalized = (providerInstances.get(identity.provider)?.format ?? 'origin') === 'host'
     ? normalizeHostInstance(identity)
     : normalizeOriginInstance(identity);
@@ -305,17 +312,7 @@ const parseRepositoryContext = (payload: RepositoryContextDTO): SourceControlRep
     || Object.prototype.toString.call(payload.bare) !== '[object Boolean]' || !Array.isArray(payload.remotes)) {
     throw new Error('Source control response contained an invalid repository context');
   }
-  const remotes = payload.remotes.map((remote) => {
-    if (!remote || !isStringValue(remote.name) || !remote.name
-      || !isSafeRepositoryEndpoint(remote.fetch) || !isSafeRepositoryEndpoint(remote.push)) {
-      throw new Error('Source control response contained an invalid repository remote');
-    }
-    return {
-      name: remote.name,
-      fetch: { displayUrl: remote.fetch.displayUrl, fingerprint: remote.fetch.fingerprint },
-      push: { displayUrl: remote.push.displayUrl, fingerprint: remote.push.fingerprint },
-    };
-  });
+  const remotes = payload.remotes.map(parseRepositoryRemote);
   return { repositoryId: payload.repositoryId, configRevision: payload.configRevision, bare: payload.bare, remotes };
 };
 
@@ -437,7 +434,7 @@ const parseIncompleteProjectIds = (ids: PageResult<never>['incompleteProjectIds'
   return [...ids];
 };
 
-const post = <TResult extends ErrorResponse>(
+export const post = <TResult extends ErrorResponse>(
   fetch: SourceControlFetch,
   identity: SourceControlIdentity,
   path: string,
@@ -459,17 +456,17 @@ const hasExactKeys = (value: ExactKeyValue, keys: readonly string[]): boolean =>
   return actual.length === keys.length && actual.every((key) => keys.includes(key));
 };
 
-function mutationBody(
+export function mutationBody(
   payload: SourceControlMutationContext<SourceControlCreateMutationTarget>,
   identity: SourceControlIdentity,
   operation: 'create',
 ): MutationBody<SourceControlCreateMutationTarget>;
-function mutationBody(
+export function mutationBody(
   payload: SourceControlMutationContext<SourceControlExistingMutationTarget>,
   identity: SourceControlIdentity,
   operation: 'existing',
 ): MutationBody<SourceControlExistingMutationTarget>;
-function mutationBody(
+export function mutationBody(
   payload: SourceControlMutationContext,
   identity: SourceControlIdentity,
   operation: 'create' | 'existing',
@@ -536,7 +533,7 @@ const mutationTargetMatches = (
   && (context.target.base === undefined || target.base === context.target.base)
   && (context.target.headSha === undefined || target.headSha === context.target.headSha);
 
-const parseMutationReceipt = <TResult>(
+export const parseMutationReceipt = <TResult>(
   payload: MutationReceiptDTO,
   context: SourceControlMutationContext,
   identity: SourceControlIdentity,
@@ -584,7 +581,7 @@ const parseMutationReceipt = <TResult>(
   };
 };
 
-const parseEmptyMutationResult = (result: MutationResultDTO): SourceControlEmptyMutationResult => {
+export const parseEmptyMutationResult = (result: MutationResultDTO): SourceControlEmptyMutationResult => {
   if (!hasExactKeys(result, [])) throw new Error('Source control response contained an invalid mutation result');
   return {};
 };
@@ -629,15 +626,14 @@ interface RepositoryChoicesDTO extends ErrorResponse {
 
 
 const readRepositoryChoices = async (
-  fetch: SourceControlFetch,
-  context: SourceControlReadContext,
-  project: RepositorySelector,
-  path: string,
+  fetch: SourceControlFetch, context: SourceControlReadContext, project: RepositorySelector,
+  path: string, role?: 'assignee' | 'reviewer',
 ): Promise<NonNullable<RepositoryChoicesDTO['items']>> => {
   const identity = normalizeIdentity(context);
   const query = boundReadQuery(context);
   query.set('owner', project.owner);
   query.set('repo', project.repo);
+  if (role) query.set('role', role);
   const payload = await request<RepositoryChoicesDTO>(fetch, identity, path, {}, query);
   if (payload.connected !== true) throw new Error(`${providerLabel(identity)} is not connected`);
   if (!Array.isArray(payload.items)) throw new Error('Source control response contained an invalid list');
@@ -658,7 +654,7 @@ const parseReviewerChoices = (items: NonNullable<RepositoryChoicesDTO['items']>)
   return item.avatarUrl ? { id: item.id, login: item.login, avatarUrl: item.avatarUrl } : { id: item.id, login: item.login };
 });
 
-const parseStateMutationResult = (result: MutationResultDTO): SourceControlStateMutationResult => {
+export const parseStateMutationResult = (result: MutationResultDTO): SourceControlStateMutationResult => {
   if (!hasExactKeys(result, ['state']) || (result.state !== 'open' && result.state !== 'closed')) {
     throw new Error('Source control response contained an invalid state result');
   }
@@ -890,8 +886,11 @@ const parseSourceIssue = (issue: Issue, identity: SourceControlIdentity): Issue 
   if (issue.author !== undefined) result.author = issue.author ? parseSourceUser(issue.author, identity) : null;
   if (issue.assignees !== undefined) result.assignees = issue.assignees.map((user) => parseSourceUser(user, identity));
   if (issue.labels !== undefined) result.labels = issue.labels.map((label) => ({ name: label.name, color: label.color }));
+  Object.assign(result, writeFlags(issue));
   if (issue.createdAt) result.createdAt = issue.createdAt;
   if (issue.updatedAt) result.updatedAt = issue.updatedAt;
+  const references = parseSourceReferenceLinks(issue.references);
+  if (references.length > 0) result.references = references;
   return result;
 };
 
@@ -1051,24 +1050,8 @@ const parseSourceComment = (comment: IssueComment, identity: SourceControlIdenti
   return result;
 };
 
-type BoundaryScalar = string | number | boolean | null | undefined;
-const isStringValue = (value: BoundaryScalar): value is string => Object.prototype.toString.call(value) === '[object String]';
-const isBooleanValue = (value: BoundaryScalar): value is boolean => Object.prototype.toString.call(value) === '[object Boolean]';
-const isNumberValue = (value: BoundaryScalar): value is number => Object.prototype.toString.call(value) === '[object Number]';
-const isNonEmptyString = (value: BoundaryScalar): value is string => isStringValue(value) && value.trim().length > 0;
-const isPositiveSafeInteger = (value: BoundaryScalar): value is number => isNumberValue(value) && Number.isSafeInteger(value) && value >= 1;
-
 const isNonNegativeSafeInteger = (value: BoundaryScalar): value is number => isNumberValue(value) && Number.isSafeInteger(value) && value >= 0;
 const isValidId = (value: string | number | undefined): boolean => isNonEmptyString(value) || Number.isFinite(value);
-const isHttpUrl = (value: BoundaryScalar): value is string => {
-  if (!isNonEmptyString(value)) return false;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' || url.protocol === 'http:';
-  } catch {
-    return false;
-  }
-};
 const hasMatchingIdentity = (
   value: { provider?: string; instance?: string } | null | undefined,
   identity: SourceControlIdentity,
@@ -1554,13 +1537,7 @@ export const createWebSourceControlAPI = (options: WebSourceControlAPIOptions = 
       });
       return parseMutationReceipt(result, payload, identity, parseStateMutationResult);
     },
-    issueSetState: async (payload: SetStateInput) => {
-      const identity = normalizeIdentity(payload);
-      const result = await post<MutationReceiptDTO>(fetch, identity, '/issues/state', {
-        ...mutationBody(payload, identity, 'existing'), state: payload.state,
-      });
-      return parseMutationReceipt(result, payload, identity, parseStateMutationResult);
-    },
+    ...createItemWrites(fetch),
     changeRequestSetLabels: async (payload: SetLabelsInput) => {
       const identity = normalizeIdentity(payload);
       const result = await post<MutationReceiptDTO>(fetch, identity, '/pr/labels', {
@@ -1589,7 +1566,7 @@ export const createWebSourceControlAPI = (options: WebSourceControlAPIOptions = 
       await request<ErrorResponse>(fetch, identity, '/read-cache/refresh', { method: 'POST' }, query);
     },
     referenceLabels: async (context, project) => parseLabelChoices(await readRepositoryChoices(fetch, context, project, '/references/labels')),
-    referenceReviewers: async (context, project) => parseReviewerChoices(await readRepositoryChoices(fetch, context, project, '/references/reviewers')),
+    referenceReviewers: async (context, project, role) => parseReviewerChoices(await readRepositoryChoices(fetch, context, project, '/references/reviewers', role)),
     issueComment: async (payload: CommentInput) => {
       const identity = normalizeIdentity(payload);
       const result = await post<MutationReceiptDTO>(fetch, identity, '/issues/comment', {
@@ -1656,6 +1633,7 @@ export const createWebSourceControlAPI = (options: WebSourceControlAPIOptions = 
       if (contextOptions?.includeDiff) query.set('diff', '1');
       if (contextOptions?.includeCIDetails) query.set('checkDetails', '1');
       if (contextOptions?.includeTimeline) query.set('timeline', '1');
+      if (contextOptions?.includeReferences) query.set('references', '1');
       if (contextOptions?.revision) query.set('revision', contextOptions.revision);
       if (contextOptions?.project) {
         query.set('owner', contextOptions.project.owner);
@@ -1680,12 +1658,15 @@ export const createWebSourceControlAPI = (options: WebSourceControlAPIOptions = 
         result.verdicts = (payload.verdicts ?? []).map((verdict) => parseSourceVerdict(verdict, normalized));
         if (payload.reviewers) result.reviewers = payload.reviewers.map((user) => parseSourceUser(user, normalized));
       }
+      const references = parseSourceReferenceLinks(payload.references);
+      if (references.length > 0) result.references = references;
       if (payload.stack === null) result.stack = null;
       else if (payload.stack !== undefined) {
         const stack = parseOptionalStack(payload.stack);
         if (stack) result.stack = stack;
       }
-
+      const reviewerStates = payload.reviewerStates === undefined ? undefined : parseReviewerStates(payload.reviewerStates, normalized, parseSourceUser);
+      if (reviewerStates) result.reviewerStates = reviewerStates;
       if (payload.voteLabels !== undefined) {
         if (!Array.isArray(payload.voteLabels)) throw new Error('Source control response contained invalid vote labels');
         result.voteLabels = payload.voteLabels.map((label) => parseSourceVoteLabel(label, normalized));
@@ -1713,10 +1694,11 @@ export const createWebSourceControlAPI = (options: WebSourceControlAPIOptions = 
       if (!payload || !Array.isArray(payload.items)) throw new Error('Source control response contained invalid issues');
       return parsePage(payload, payload.items.map((item) => parseSourceIssue(item, normalized)));
     },
-    issueGet: async (context, number, projectSelector) => {
+    issueGet: async (context, number, projectSelector, readOptions): Promise<Issue | null> => {
       const normalized = normalizeIdentity(context);
       const query = boundReadQuery(context);
       query.set('number', String(number));
+      if (readOptions?.includeReferences) query.set('references', '1');
       if (projectSelector) {
         query.set('owner', projectSelector.owner);
         query.set('repo', projectSelector.name);
@@ -1758,7 +1740,7 @@ export const createWebSourceControlAPI = (options: WebSourceControlAPIOptions = 
     },
     references: (context, referenceOptions) => fetchRepositoryReferences(fetch, context, referenceOptions),
     referencesAcross: (contexts, referenceOptions) => fetchRepositoryReferencesAcross(fetch, contexts, referenceOptions),
-    referenceDetail: (context, item) => fetchRepositoryReferenceDetail(fetch, context, item),
+    referenceDetail: (context, item, readOptions) => fetchRepositoryReferenceDetail(fetch, context, item, readOptions),
     changeRequestListStatuses: (context, refs) => fetchChangeRequestListStatuses(fetch, context, refs),
   };
 };

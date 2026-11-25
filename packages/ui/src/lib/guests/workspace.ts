@@ -1,3 +1,4 @@
+import { listIntegrateCheckouts } from '@/lib/worktrees/integrateCheckouts';
 import { HostRequestError, type GuestLoadState, type GuestSessionRecord, type GuestWorkspaceQuery, type GuestWorkspaceSnapshot, type GuestWorktree } from '@openchamber/sdk';
 import type { Session } from '@/lib/opencode/model';
 import { useProjectsStore } from '@/stores/useProjectsStore';
@@ -10,11 +11,13 @@ import { getLinkedIssues, isLinkedChange } from '@/lib/linkedIssues';
 import { isSessionInWork } from '@/lib/sessionWorkMetadata';
 import { isSessionUnread } from '@/sync/session-unread';
 import { currentLiveTool, useSessionLiveWorkStore } from '@/sync/session-live-work';
+import { readDeferredGlobalUpdates, subscribeDeferredGlobalUpdates, withDeferredGlobalUpdate } from '@/sync/session-event-router';
 import { findSessionModelKey, limitsForAnsweringModel } from '@/lib/routing/contextWindowLimits';
 import { normalizePath } from '@/lib/pathNormalization';
 import { checkoutHoldsDirectory, checkoutHoldsSubfolder } from '@/lib/worktrees/worktreePaths';
 import { getRuntimeKey, subscribeRuntimeEndpointChanged } from '@/lib/runtime-switch';
 import { useUIStore } from '@/stores/useUIStore';
+import { computeSessionTokenTotals } from '@/components/chat/work-status/contextUsage';
 import type { WorktreeMetadata } from '@/types/worktree';
 
 export const guestProject = (projectId: string) => {
@@ -109,6 +112,7 @@ const projectSession = (session: Session, projectId: string, guestId: string, wo
     unread: isSessionUnread(session),
     tool: liveTool && activity === 'running' ? { name: liveTool.name, target: liveTool.path ? toolTarget(liveTool.path, directory) : null } : null,
     context: reading?.state === 'measured' ? { tokens: reading.tokens, limit: contextLimit > 0 ? contextLimit : null } : null,
+    tokens: computeSessionTokenTotals(withDeferredGlobalUpdate(session, readDeferredGlobalUpdates().get(session.id))),
   };
 };
 
@@ -127,6 +131,7 @@ export const readGuestWorkspace = (query: GuestWorkspaceQuery, guestId: string):
   const directories = new Set(project ? [path, ...worktrees.map((worktree) => normalizePath(worktree.directory) ?? worktree.directory)] : []);
   const manager = getSyncChildStores();
   const global = useGlobalSessionsStore.getState();
+  for (const checkout of listIntegrateCheckouts()) if (checkout.projectPaths.includes(path)) directories.add(checkout.path);
   const coverage = [...directories].map((directory) => {
     const bootstrap = manager.getBootstrapState(directory);
     const state: GuestLoadState = bootstrap === 'failed' || global.status === 'error' ? 'error' : global.status === 'ready' ? 'ready' : 'loading';
@@ -197,6 +202,7 @@ export const observeGuestWorkspace = (query: GuestWorkspaceQuery, guestId: strin
       unsubs.push(
         useGlobalSessionsStore.subscribe((state, previous) => { if (state.activeSessions !== previous.activeSessions || state.archivedSessions !== previous.archivedSessions || state.status !== previous.status) update(); }),
         useGlobalSessionStatusStore.subscribe(update),
+        subscribeDeferredGlobalUpdates(update),
         useConfigStore.subscribe((state, previous) => { if (state.isConnected !== previous.isConnected || state.providers !== previous.providers) update(); }),
         useSessionLiveWorkStore.subscribe(update),
         useUIStore.subscribe((state, previous) => { if (state.sessionWorkEnabled !== previous.sessionWorkEnabled) update(); }),

@@ -1,3 +1,4 @@
+import { resolveHydrationSource } from './hydration-source.js';
 import { isGitString as isString } from './input-guards.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -10,11 +11,11 @@ import { createGitCredentialBroker, GIT_CREDENTIAL_NONCE_ENV } from './credentia
 import { helperShellCommand } from './helper-launch.js';
 import { gitLfsCredentialEndpointAliases, normalizeGitRemoteEndpoint, parseGitCredentialReference } from './credential-resolver.js';
 import { createNetworkOperationPlanner, isChangeReviewRemote } from './network-operation-plan.js';
-import { createNetworkOperationRegistry } from './network-operation-registry.js';
+import { createNetworkOperationRegistry, expectedHydrationStatus } from './network-operation-registry.js';
 import { createGitRedactor, redactGitText } from './redaction.js';
-import { parseSubmoduleManifest, SUBMODULE_DISCOVERY_LIMITS } from './submodule-discovery.js';
+import { SUBMODULE_DISCOVERY_LIMITS } from './submodule-discovery.js';
 import { createLfsFileScanner, discoverLfs, scanLfsPushObjects, resolveLfsPushConfig, LFS_DISCOVERY_LIMITS, SAFE_FILTERS } from './lfs-discovery.js';
-import { resolveGitRelativeEndpoint } from './discovery-endpoint.js';
+import { hydrationError, hydrationFailure, parseHydrationSubmodules, resolveHydrationSubmodule } from './hydration-results.js';
 import { fingerprintRemoteUrl, redactRemoteUrl } from '../source-control/url-redaction.js';
 import { birthtimeHoldsStill } from './directory-birthtime.js';
 import type { ChildProcess } from 'node:child_process';
@@ -27,7 +28,7 @@ import type { EndpointDisplay, HydrationRequirement, HydrationTransfer } from '.
 import type {
   AuditPlans, AuxiliaryAuthority, CheckoutActionsPlan, CheckoutHydration, CheckoutTrustInput, ClonePlan,
   Completion, ContributorPlan, ContributorTransferSource, CopiedCheckoutEntry,
-  ExecutionControls, ExecutionPlan, ExistingPlan, HydrationFailure, HydrationInput,
+  ExecutionControls, ExecutionPlan, ExistingPlan, HydrationInput,
   HydrationInspectionInput, HydrationPart, HydrationPlan, HydrationRequirementWithEndpoint,
   LeasedTransportContext, LocalGitOptions, LstatSnapshot, NetworkOperationsOptions,
   PhaseControls, PhaseOptions, PostCheckoutHookAction,
@@ -1118,35 +1119,6 @@ export function createNetworkOperations({
     return { env, configArgs, secrets: [] };
   };
 
-  const hydrationStatus = (submodules: HydrationPart[], lfs: HydrationPart[]) => {
-    const statuses = [...submodules, ...lfs].map((entry) => entry.status);
-    if (!statuses.length || statuses.every((status) => status === 'not-needed')) return 'not-needed';
-    for (const status of ['cancelled', 'invalid', 'client-missing', 'authorization-required', 'failed']) {
-      if (statuses.includes(status)) return status;
-    }
-    return 'succeeded';
-  };
-  const hydrationError = (cause: unknown): HydrationFailure => {
-    const error = errorFields(cause);
-    if (error?.code === 'RUNTIME_UNSUPPORTED') {
-      return { status: 'failed', error: publicError('RUNTIME_UNSUPPORTED', 'Checkout hydration transport is unavailable') };
-    }
-    if (error?.cancelled || error?.timedOut || error?.code === 'CANCELLED' || error?.code === 'TIMEOUT') {
-      const timedOut = error?.timedOut || error?.code === 'TIMEOUT';
-      return { status: 'cancelled', error: publicError(timedOut ? 'TIMEOUT' : 'CANCELLED', timedOut ? 'Checkout hydration timed out' : 'Checkout hydration was cancelled') };
-    }
-    if (error?.code === 'GIT_AUXILIARY_AUTHORIZATION_REQUIRED') {
-      return { status: 'authorization-required', error: publicError('AUTHENTICATION_REQUIRED', 'This checkout endpoint requires an explicit credential grant') };
-    }
-    if (error?.code === 'LFS_DISCOVERY_LIMIT_EXCEEDED') {
-      return { status: 'invalid', error: publicError('CHECKOUT_TOO_LARGE', 'Checkout has too many files to inspect') };
-    }
-    if (String(error?.code || '').includes('INVALID') || String(error?.code || '').includes('LIMIT_EXCEEDED')
-      || error?.code === 'UNSAFE_LFS_EXECUTABLE_CONFIG') {
-      return { status: 'invalid', error: publicError('INVALID_REQUEST', 'Checkout hydration configuration is invalid') };
-    }
-    return { status: 'failed', error: publicError('TRANSPORT_FAILED', 'Checkout hydration failed') };
-  };
   function localGit(directory: string, args: string[], controls: ExecutionControls | undefined, deadline: number, options: LocalGitOptions & { rawOutput: true }): Promise<Buffer>;
   function localGit(directory: string, args: string[], controls: ExecutionControls | undefined, deadline: number, options?: LocalGitOptions & { rawOutput?: false }): Promise<string>;
   async function localGit(directory: string, args: string[], controls: ExecutionControls | undefined, deadline: number, {
@@ -1363,7 +1335,7 @@ export function createNetworkOperations({
     }
   };
 
-  const inspectSingleCheckoutHydration = async ({ directory, parentEndpoint, parentRemoteName, controls, deadline = Date.now() + timeoutMs }: HydrationInspectionInput) => {
+  const inspectSingleCheckoutHydration = async ({ directory, parentEndpoint, parentRemoteName, prefix = '', controls, deadline = Date.now() + timeoutMs }: HydrationInspectionInput & { prefix?: string }) => {
     const headSha = (await localGit(directory, ['rev-parse', '--verify', 'HEAD'], controls, deadline)).trim().toLowerCase();
     if (!SHA_PATTERN.test(headSha)) throw operationError('STALE_CONFIG', 'Checkout HEAD is invalid', 409);
     const configOutput = await localGit(directory, [
@@ -1371,7 +1343,7 @@ export function createNetworkOperations({
     ], controls, deadline, { allowedCodes: [0, 1, 128] });
     const gitlinks = createGitlinksStream();
     await localGit(directory, ['ls-tree', '-rz', '--full-tree', 'HEAD'], controls, deadline, { onStdout: (chunk) => gitlinks.write(chunk) });
-    const manifest = parseSubmoduleManifest({ gitmodulesConfig: configOutput, gitlinks: gitlinks.complete(), recursionDepth: 0 });
+    const manifest = parseHydrationSubmodules({ gitmodulesConfig: configOutput, gitlinks: gitlinks.complete(), recursionDepth: 0 }, prefix);
     const scanner = createLfsFileScanner((args, input) => localGit(directory, args, controls, deadline,
       { input, maxOutputBytes: LFS_DISCOVERY_LIMITS.maxBatchBytes, rawOutput: true }), manifest.modules.map((module) => module.path));
     const files = createIndexFilesStream(scanner);
@@ -1379,7 +1351,7 @@ export function createNetworkOperations({
     const scan = await files.complete();
     const children = manifest.modules.map((module) => {
       if (!parentEndpoint || !parentRemoteName) return { path: module.path, gitlink: module.gitlink };
-      const resolved = resolveGitRelativeEndpoint(module.url, parentEndpoint);
+      const resolved = resolveHydrationSubmodule(module, parentEndpoint, prefix);
       return { path: module.path, gitlink: module.gitlink, endpoint: resolved.endpoint };
     });
     const requirements: HydrationRequirementWithEndpoint[] = [];
@@ -1437,7 +1409,7 @@ export function createNetworkOperations({
         throw operationError('INVALID_REQUEST', 'Submodule recursion exceeds its depth limit', 400);
       }
       const inspection = await inspectSingleCheckoutHydration({
-        ...input, directory, parentEndpoint, parentRemoteName, deadline,
+        ...input, directory, parentEndpoint, parentRemoteName, prefix, deadline,
       });
       sourceRequired ||= inspection.sourceRequired;
       for (const requirement of inspection.requirements) {
@@ -1498,6 +1470,7 @@ export function createNetworkOperations({
   const hydrateCheckout = async (hydrationPlan: HydrationPlan, controls: ExecutionControls, deadline: number): Promise<CheckoutHydration> => {
     const submodules: HydrationPart[] = [];
     const lfs: HydrationPart[] = [];
+    const diagnostics: HydrationPart[] = [];
     let moduleCount = 0;
     const childPlan = (directory: string) => ({ ...hydrationPlan, directory, authorityDirectory: hydrationPlan.directory });
     const visit = async (directory: string, parentEndpoint: string | undefined, parentRemoteName: string | undefined, prefix: string, depth: number, foundAfterPlanning = false): Promise<void> => {
@@ -1509,7 +1482,7 @@ export function createNetworkOperations({
       ], controls, deadline, { allowedCodes: [0, 1, 128] });
       const gitlinks = createGitlinksStream();
       await localGit(directory, ['ls-tree', '-rz', '--full-tree', 'HEAD'], controls, deadline, { onStdout: (chunk) => gitlinks.write(chunk) });
-      const manifest = parseSubmoduleManifest({ gitmodulesConfig: configOutput, gitlinks: gitlinks.complete(), recursionDepth: depth });
+      const manifest = parseHydrationSubmodules({ gitmodulesConfig: configOutput, gitlinks: gitlinks.complete(), recursionDepth: depth }, prefix);
       for (const module of hydrationPlan.hydrateSubmodules === false ? [] : manifest.modules) {
         if (phaseError(controls, deadline)) throw phaseError(controls, deadline);
         moduleCount += 1;
@@ -1520,12 +1493,12 @@ export function createNetworkOperations({
         let endpoint;
         try {
           if (!parentEndpoint || !parentRemoteName) {
-            submodules.push({ path: resultPath, status: 'authorization-required', error: publicError(
-              'AUTHENTICATION_REQUIRED', 'Submodule hydration requires the exact parent fetch source and an explicit endpoint grant; fetch from a selected source and retry',
+            submodules.push({ path: resultPath, status: 'invalid', error: publicError(
+              'SUBMODULE_SOURCE_LOCAL', 'Submodules weren\'t fetched: OpenChamber fetches them only through a network remote, and this worktree has none to use. The repository\'s remote is a folder on this computer, it has no remote, or its branch tracks none. Work in the repository folder itself, or start the worktree from a branch whose upstream is a network remote.',
             ) });
             continue;
           }
-          endpoint = resolveGitRelativeEndpoint(module.url, parentEndpoint);
+          endpoint = resolveHydrationSubmodule(module, parentEndpoint, prefix);
           const publicEndpoint = { displayUrl: redactRemoteUrl(endpoint.endpoint), fingerprint: fingerprintRemoteUrl(endpoint.endpoint) };
           const location = await inspectSubmoduleDirectory(directory, module.path);
           const childDirectory = location.path;
@@ -1597,6 +1570,8 @@ export function createNetworkOperations({
             };
             submodules.push(failedModule);
           }
+          const detail = hydrationFailure(error).submodules[0];
+          if (detail && detail.path !== resultPath) diagnostics.push(detail);
           if (failure.status === 'cancelled') throw error;
         }
       }
@@ -1612,8 +1587,8 @@ export function createNetworkOperations({
         return;
       }
       if (!parentEndpoint || !parentRemoteName) {
-        lfs.push({ path: lfsPath, status: 'authorization-required', error: publicError(
-          'AUTHENTICATION_REQUIRED', 'Git LFS hydration requires the exact parent fetch source and an explicit HTTPS endpoint grant; fetch from a selected source and retry',
+        lfs.push({ path: lfsPath, status: 'invalid', error: publicError(
+          'LFS_SOURCE_LOCAL', 'Git LFS files weren\'t fetched: OpenChamber fetches them only through a network remote, and this worktree has none to use. The repository\'s remote is a folder on this computer, it has no remote, or its branch tracks none. Work in the repository folder itself, or start the worktree from a branch whose upstream is a network remote.',
         ) });
         return;
       }
@@ -1663,16 +1638,22 @@ export function createNetworkOperations({
         }
       }
     };
+    let visitError: unknown;
     try {
       await visit(hydrationPlan.directory, hydrationPlan.parentEndpoint, hydrationPlan.parentRemoteName, '', 0);
     } catch (error) {
-      const failure = hydrationError(error);
+      visitError = error;
+    }
+    submodules.push(...diagnostics.slice(0, Math.max(0, SUBMODULE_DISCOVERY_LIMITS.maxPublicRecords - submodules.length)));
+    if (visitError !== undefined) {
+      const failure = hydrationFailure(visitError);
       if (!submodules.some((entry) => entry.status === failure.status)
         && !lfs.some((entry) => entry.status === failure.status)) {
-        lfs.push({ path: '.', ...failure });
+        submodules.push(...failure.submodules);
+        lfs.push(...failure.lfs);
       }
     }
-    return Object.freeze({ status: hydrationStatus(submodules, lfs), submodules, lfs });
+    return Object.freeze({ status: expectedHydrationStatus([...submodules, ...lfs]), submodules, lfs });
   };
 
   const cancellationResult = (plan: { target: { operation: string } }, controls: ExecutionControls, cause: unknown) => {
@@ -1895,7 +1876,7 @@ export function createNetworkOperations({
         } else {
           temporaryRef = plan.target.operation === 'pull' ? `refs/openchamber/network/${plan.operationId}` : plan.target.destinationRef;
           await commandResult(plan, controls, [
-            'fetch', '--no-tags', ...(plan.target.operation === 'pull' ? ['--no-recurse-submodules'] : []),
+            'fetch', '--no-tags', '--no-recurse-submodules',
             '--', occupied(plan.rawEndpoint), singleRefFetchRefspec(occupied(plan.target.sourceRef), occupied(temporaryRef)),
           ], context, deadline, { transfer: true });
           await controls.markStepCompleted('transferred');
@@ -2396,15 +2377,9 @@ export function createNetworkOperations({
   const executeHydration = async (plan: HydrationPlan, controls: ExecutionControls, deadline = Date.now() + timeoutMs): Promise<Completion> => {
     const plannedHydration = Array.isArray(plan.plannedTransfers);
     if (plan.preparedHydrationFailure) {
-      const hydration = Object.freeze({
-        status: plan.preparedHydrationFailure.status,
-        submodules: [],
-        lfs: [{ path: '.', ...plan.preparedHydrationFailure }],
-      });
-      if (hydration.status === 'cancelled') {
-        return { state: 'cancelled', error: occupied(hydration.lfs[0]).error, hydration };
-      }
-      return { state: 'failed', error: occupied(hydration.lfs[0]).error, hydration };
+      const hydration = plan.preparedHydrationFailure;
+      const error = occupied([...hydration.submodules, ...hydration.lfs][0]).error;
+      return { state: hydration.status === 'cancelled' ? 'cancelled' : 'failed', error, hydration };
     }
     if (plannedHydration) {
       try {
@@ -2769,7 +2744,7 @@ export function createNetworkOperations({
     try {
       inspection = await inspectCheckoutHydration({ directory, parentEndpoint, parentRemoteName, deadline });
     } catch (error) {
-      preparedHydrationFailure = hydrationError(error);
+      preparedHydrationFailure = hydrationFailure(error);
       inspection = { headSha: '', requirements: [], transfers: [], sourceRequired: false };
     }
     const publicPlan = Object.freeze({
@@ -2798,7 +2773,7 @@ export function createNetworkOperations({
     }, deadline);
     await registerWithAudit(plans);
     const result = await executeOperation(operationId, deadline);
-    return result.hydration;
+    return result.hydration ?? (result.error ? rethrow(Object.assign(new Error(result.error.message), { code: result.error.code })) : undefined);
   };
 
   return Object.freeze({
@@ -2883,16 +2858,12 @@ export function createNetworkOperations({
       return runHydrationOperation({ directory, parentRemoteName, parentEndpoint, repositoryAuthority });
     },
     async hydrateBoundCheckout({ directory, parentRemoteName, parentEndpoint, repositoryAuthority }: HydrationInput) {
-      let endpoint = parentEndpoint;
-      if (!endpoint && parentRemoteName && repositoryAuthority) {
-        const authority = await validateGitTransportContext({
-          directory,
-          ...repositoryAuthority,
-          remote: parentRemoteName,
-          endpointKind: 'fetch',
-        });
-        endpoint = authority.endpoint;
-      }
+      const deadline = Date.now() + timeoutMs;
+      const endpoint = parentEndpoint || !parentRemoteName || !repositoryAuthority ? parentEndpoint : await resolveHydrationSource({
+        directory, parentRemoteName, repositoryAuthority, validateGitTransportContext,
+        readConfiguredUrl: () => localGit(directory, ['remote', 'get-url', parentRemoteName], undefined, deadline, { allowedCodes: [0, 2, 128] }),
+        inspect: (configured) => inspectCheckoutHydration({ directory, parentEndpoint: configured, parentRemoteName, deadline }),
+      });
       return runHydrationOperation({ directory, parentRemoteName, parentEndpoint: endpoint, repositoryAuthority });
     },
     inspectCheckoutHydration: async ({ directory, parentEndpoint, parentRemoteName }: HydrationInput) => {

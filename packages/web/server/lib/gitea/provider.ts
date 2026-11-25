@@ -81,6 +81,7 @@ type Steps = {
   '/pr/labels': ExistingStep<Names>;
   '/issues/labels': ExistingStep<Names>;
   '/pr/reviewers': ExistingStep<Names>;
+  '/issues/assignees': ExistingStep<Names>;
 };
 type Route = keyof Steps;
 type MutationCall<K extends Route> = { session: ProviderSession; route: K; kind: string } & Steps[K];
@@ -203,6 +204,10 @@ function mutationOperations(): Operations {
       perform: (service, normalized, resolved) => service.setReviewers(call(resolved, { reviewers: normalized.names })),
       reconcile: (service, resolved, normalized) => service.reconcileSetMutation(resolved.providerTarget, 'change-request-reviewers', normalized.names),
     },
+    '/issues/assignees': {
+      perform: (service, normalized, resolved) => service.setIssueAssignees(call(resolved, { assignees: normalized.names })),
+      reconcile: (service, resolved, normalized) => service.reconcileIssueAssignees(resolved.providerTarget, normalized.names),
+    },
   };
 }
 
@@ -291,19 +296,19 @@ export function createGiteaFamilyProvider(build: GiteaFamilyProviderOptions) {
       changeRequestStatus: ({ session, directory, branch, remote }: ReadInput & { branch: string }) => serviceFor(session).changeRequestStatus(directory, branch, remote),
       listChangeRequests: ({ session, directory, page, query, state, people, labels, remote }: ReadInput & NonNullable<Parameters<Service['listChangeRequests']>[1]>) => serviceFor(session)
         .listChangeRequests(directory, { page, query, state, people, labels, remote }),
-      changeRequestContext: ({ session, context, directory, number, project, remote, includeDiff, includeCIDetails, includeTimeline }: NumberedRead & LinkedRead & NonNullable<Parameters<Service['changeRequestContext']>[2]> & { includeCIDetails?: boolean }) => {
-        const options = { includeDiff, includeCIDetails, includeTimeline, project, remote, linked: context?.linked };
+      changeRequestContext: ({ session, context, directory, number, project, remote, includeDiff, includeCIDetails, includeTimeline, includeReferences }: NumberedRead & LinkedRead & NonNullable<Parameters<Service['changeRequestContext']>[2]> & { includeCIDetails?: boolean }) => {
+        const options = { includeDiff, includeCIDetails, includeTimeline, includeReferences, project, remote, linked: context?.linked };
         return serviceFor(session).changeRequestContext(directory, number, options);
       },
       reviewState: ({ session, directory, project, number, remote }: NumberedRead) => serviceFor(session).reviewState(directory, number, project, remote),
       listIssues: ({ session, directory, page, query, state, people, labels, remote }: ReadInput & NonNullable<Parameters<Service['listIssues']>[1]>) => serviceFor(session)
         .listIssues(directory, { page, query, state, people, labels, remote }),
-      getIssue: ({ session, context, directory, number, project, remote }: NumberedRead & LinkedRead) => serviceFor(session).getIssue(directory, number, project, remote, { linked: context?.linked }),
+      getIssue: ({ session, context, directory, number, project, remote, includeReferences }: NumberedRead & LinkedRead & { includeReferences?: boolean }) => serviceFor(session).getIssue(directory, number, project, remote, { linked: context?.linked, includeReferences: Boolean(includeReferences) }),
       issueComments: ({ session, context, directory, number, project, remote }: NumberedRead & LinkedRead) => serviceFor(session).issueComments(directory, number, project, remote, { linked: context?.linked }),
       projectUpstream: ({ session, directory, remote }: ReadInput) => serviceFor(session).projectUpstream(directory, remote),
       projectBranches: ({ session, directory, project, remote }: ReadInput & Pick<NumberedRead, 'project'>) => serviceFor(session).projectBranches(directory, project, remote),
       listLabels: ({ session, directory, project, remote }: ReadInput & Pick<NumberedRead, 'project'>) => serviceFor(session).listLabels(directory, project, remote),
-      listReviewerCandidates: ({ session, directory, project, remote }: ReadInput & Pick<NumberedRead, 'project'>) => serviceFor(session).listReviewerCandidates(directory, project, remote),
+      listReviewerCandidates: ({ session, directory, project, remote, role }: ReadInput & Pick<NumberedRead, 'project'> & { role?: 'assignee' | 'reviewer' }) => serviceFor(session).listReviewerCandidates(directory, project, remote, role ? { role } : {}),
       readChangeRequestPatch: ({ session, directory, number, sourceRepo, remote, linked }: PatchRead) => serviceFor(session)
         .changeRequestPatch(directory, number, { project: projectSelector(sourceRepo), remote, linked }),
       readChangeRequestFile: ({ session, directory, number, sourceRepo, remote, path, previousPath, status, binary, linked }: PatchRead & Pick<Parameters<Service['changeRequestFileContents']>[2], 'path' | 'previousPath' | 'status' | 'binary'>) => serviceFor(session)

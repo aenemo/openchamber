@@ -1,4 +1,9 @@
 import type { SourceControlProviderId } from './providers/descriptor.js';
+import type { ChangeRequestReviewerState } from './review-types';
+import type { SourceControlReferenceLink } from './references.js';
+
+export type { ChangeRequestReviewerState, ReviewerStateValue } from './review-types';
+export type { SourceControlReferenceLink } from './references.js';
 
 export type SourceControlProvider = SourceControlProviderId;
 
@@ -18,6 +23,7 @@ export interface SourceControlRepositoryRemote {
   name: string;
   fetch: SourceControlRepositoryEndpoint;
   push: SourceControlRepositoryEndpoint;
+  sshHostName?: string;
 }
 
 export interface SourceControlRepositoryContext {
@@ -289,9 +295,11 @@ export interface Issue extends SourceControlIdentity {
   state: 'open' | 'closed';
   author?: SourceControlUser | null;
   assignees?: SourceControlUser[];
+  writeAccess?: boolean;
   labels?: Label[];
   createdAt?: string;
   updatedAt?: string;
+  references?: SourceControlReferenceLink[];
 }
 
 export interface IssueComment extends SourceControlIdentity {
@@ -515,6 +523,8 @@ export interface ChangeRequestContext {
   commitsComplete?: boolean;
   verdicts?: ChangeRequestVerdict[];
   reviewers?: SourceControlUser[];
+  reviewerStates?: ChangeRequestReviewerState[];
+  references?: SourceControlReferenceLink[];
   stack?: PullRequestStack | null;
   voteLabels?: ChangeRequestVoteLabel[];
   submitRequirements?: ChangeRequestSubmitRequirement[];

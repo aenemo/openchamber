@@ -41,7 +41,7 @@ export interface UsageWindowGiftReset {
 
 export type UsageWindowValue =
   | { kind: 'requests'; count: number }
-  | { kind: 'spend'; spent: number; limit: number | null };
+  | { kind: 'spend'; spent: number | null; limit: number | null };
 
 export interface UsageWindow {
   usedPercent: number | null;
@@ -54,6 +54,7 @@ export interface UsageWindow {
   valueLabel?: string | null;
   value?: UsageWindowValue;
   creditsUsed?: number;
+  credits?: { used: number; limit: number; remaining?: number };
   giftReset?: UsageWindowGiftReset | null;
 }
 
@@ -94,6 +95,7 @@ export interface ProviderResult {
   error?: string;
   planLabel?: string | null;
   accountLabel?: string | null;
+  selection?: string;
   usage: ProviderUsage | null;
   fetchedAt: number;
 }

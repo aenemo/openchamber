@@ -4,10 +4,13 @@ import { mapLimited } from '../shared/map-limited.js';
 import { changeRequestNetworkTarget } from '../source-control/repository-network.js';
 import {
   asDraftTitle, asReadyTitle, branchRepoId, liveChangeRequestSummary, liveIssueSummary,
-  mapGiteaChangedFile, mapGiteaCI, mapGiteaComment, mapGiteaCommit, mapGiteaIssue, mapGiteaPull, mapGiteaRepo,
-  mapGiteaReviewBody, mapGiteaReviewComment, mapGiteaUser, mapGiteaVerdict, splitUnifiedDiff,
+  mapGiteaChangedFile, mapGiteaCI, mapGiteaComment, mapGiteaIssue, mapGiteaPull, mapGiteaRepo,
+  mapGiteaReviewBody, mapGiteaReviewComment, mapGiteaReviewerStates, mapGiteaUser, mapGiteaVerdict, splitUnifiedDiff, SUBMITTED_REVIEW_STATES,
 } from './mappers.js';
 import { resolveGiteaReposFromDirectory } from './repo.js';
+import { giteaItemWrites } from './item-writes.js';
+import { createPeopleReader } from './people.js';
+import { readTimelineCommits, readTimelineReferences, withIssueReferences, withReferences } from './references.js';
 import type { JsonObject, JsonValue } from '../shared/json-values.js';
 import type { ProviderMutationContext, ProviderReadContext } from '../source-control/provider-contract.js';
 import type { reviewCommentPosition } from '../source-control/review-position.js';
@@ -30,7 +33,7 @@ type Repos = [Repo, ...Repo[]];
 type Remote = string | null | undefined;
 type Selector = Repository | null | undefined;
 type NetworkOptions = { requireComplete?: boolean; linked?: boolean | undefined };
-type ReadOptions = { remote?: Remote; linked?: boolean | undefined; project?: Selector };
+type ReadOptions = { remote?: Remote; linked?: boolean | undefined; project?: Selector; includeReferences?: boolean | undefined };
 type Ref = { owner: string; repo: string; number: number };
 type ListOptions = {
   labels?: string[] | undefined;
@@ -74,7 +77,6 @@ const PAGE_LIMIT = 50;
 const LIST_PAGE = 20;
 const COLLECTION_MAX_ITEMS = 2000;
 const STATUS_SCAN_MAX_PAGES = 5;
-const TIMELINE_COMMIT_LIMIT = 50;
 const LIVE_SUMMARY_CONCURRENCY = 4;
 const LIST_DETAIL_CONCURRENCY = 4;
 const MAX_FULL_FILE_BYTES = 5 * 1024 * 1024;
@@ -98,8 +100,6 @@ const labelFilter = (labels: ListOptions['labels'], label: string) => {
   return labels.join(',');
 };
 const REVIEW_EVENTS = Object.freeze({ approve: 'APPROVED', 'request-changes': 'REQUEST_CHANGES', comment: 'COMMENT' });
-
-const SUBMITTED_REVIEW_STATES: Pick<ReadonlySet<Input>, 'has'> = new Set(['APPROVED', 'REQUEST_CHANGES', 'COMMENT']);
 
 const hasFailureFields = (value: unknown): value is Failure => value != null;
 const statusOf = (error: Failure | null | undefined) => error?.status ?? error?.response?.status;
@@ -339,20 +339,17 @@ export function createGiteaResourceService({
     });
   };
 
-  const collaborators = (repo: Repository) => client.collection(`${repoPath(repo)}/collaborators`, {}, { limit: PAGE_LIMIT, maxItems: COLLECTION_MAX_ITEMS });
+  const repoUsers = async (repo: Repository, kind: 'collaborators' | 'assignees' = 'collaborators') => {
+    if (kind === 'collaborators') return client.collection(`${repoPath(repo)}/collaborators`, {}, { limit: PAGE_LIMIT, maxItems: COLLECTION_MAX_ITEMS });
+    // external: https://github.com/go-gitea/gitea/blob/v1.21.11/routers/api/v1/repo/collaborators.go GetAssignees answers everyone at once and ignores `page` and `limit`.
+    const users = await client.get(`${repoPath(repo)}/assignees`);
+    if (!array(users)) throw malformed(`${providerLabel} returned an invalid assignee list`);
+    return users;
+  };
 
   const pullsOfIssues = async (repo: Repo, issues: JsonValue[], { mergedOnly = false } = {}) => {
     const pulls = await mapLimited(issues, LIST_DETAIL_CONCURRENCY, (issue) => client.get(`${repoPath(repo.project)}/pulls/${record(issue).number}`));
     return pulls.filter((raw) => !mergedOnly || field(raw, 'merged') === true).map((raw) => requirePull(raw, repo.project));
-  };
-
-  const readTimelineCommits = async (repo: string, number: number) => {
-    const first = await client.page(`${repo}/pulls/${number}/commits`, { files: false, verification: false }, { page: 1, limit: TIMELINE_COMMIT_LIMIT });
-    const items = first.items.flatMap((commit) => {
-      const mapped = mapGiteaCommit(commit);
-      return mapped ? [mapped] : [];
-    }).reverse();
-    return { items, complete: !first.hasMore };
   };
 
   const readIssueComments = async (repo: Repository, number: number) => {
@@ -361,7 +358,7 @@ export function createGiteaResourceService({
     return comments;
   };
 
-  return {
+  return { ...giteaItemWrites({ client, targetRepo, repoPath, providerLabel, requireIssue, projectOfTarget, malformed, repoUsers }), ...createPeopleReader({ network, repoUsers, mapUser: mapGiteaUser, identity }),
     async changeRequestStatus(directory: string, branch: string, remote?: Remote) {
       const sources = await resolveDirectoryRepos(directory, remote);
       const targets = await withParents(sources, { requireComplete: true });
@@ -434,7 +431,7 @@ export function createGiteaResourceService({
     async changeRequestContext(directory: string, number: number, options: ReadOptions & { includeDiff?: boolean | undefined; includeTimeline?: boolean | undefined } = {}) {
       const { target, raw, request, net } = await findPull(directory, number, options.project, { remote: options.remote, linked: options.linked });
       const repo = repoPath(target.project);
-      const [comments, reviews, diffText, changedFiles, ci, headProject, commits, viewer] = await Promise.all([
+      const [comments, reviews, diffText, changedFiles, ci, headProject, commits, references, viewer] = await Promise.all([
         readIssueComments(target.project, number),
         client.collection(`${repo}/pulls/${number}/reviews`, {}, { limit: PAGE_LIMIT, maxItems: COLLECTION_MAX_ITEMS, message: `${providerLabel} pull request has more reviews than OpenChamber reads` }),
         options.includeDiff ? client.text(`${repo}/pulls/${number}.diff`) : Promise.resolve(''),
@@ -443,7 +440,8 @@ export function createGiteaResourceService({
           : Promise.resolve([]),
         readCI(target.project, request.headSha),
         headProjectOf(raw, target, net.targets),
-        options.includeTimeline ? readTimelineCommits(repo, number) : Promise.resolve(null),
+        options.includeTimeline ? readTimelineCommits(client, repo, number) : Promise.resolve(null),
+        options.includeTimeline && options.includeReferences ? readTimelineReferences(client, repo, number) : Promise.resolve([]),
         readCurrentLogin().catch(() => null),
       ]);
       const reviewsWithComments = reviews.filter((review): review is JsonObject => plainObject(review) && integer(review.id) && Number(review.comments_count) > 0);
@@ -484,13 +482,14 @@ export function createGiteaResourceService({
       };
       if (!options.includeTimeline || !commits) return context;
       return {
-        ...context,
+        ...withReferences(context, references),
         commits: commits.items,
         commitsComplete: commits.complete,
         reviewers: (array(raw.requested_reviewers) ? raw.requested_reviewers : []).flatMap((user) => {
           const mapped = mapGiteaUser(user, identity);
           return mapped ? [mapped] : [];
         }),
+        reviewerStates: mapGiteaReviewerStates(reviews, raw.requested_reviewers, identity),
         verdicts: reviews.flatMap((review) => {
           const mapped = mapGiteaVerdict(review, identity, request.url);
           return mapped ? [mapped] : [];
@@ -514,9 +513,10 @@ export function createGiteaResourceService({
       return { items, page, hasMore: result.hasMore };
     },
 
-    async getIssue(directory: string, number: number, selector?: Selector, remote?: Remote, { linked }: ReadOptions = {}) {
+    async getIssue(directory: string, number: number, selector?: Selector, remote?: Remote, { linked, includeReferences }: ReadOptions = {}) {
       const { target } = await network(directory, selector, remote, { linked });
-      return requireIssue(await client.get(`${repoPath(target.project)}/issues/${number}`), target.project);
+      const issue = requireIssue(await client.get(`${repoPath(target.project)}/issues/${number}`), target.project);
+      return includeReferences ? withIssueReferences(client, repoPath(target.project), issue, number) : issue;
     },
 
     async issueComments(directory: string, number: number, selector?: Selector, remote?: Remote, { linked }: ReadOptions = {}) {
@@ -555,15 +555,6 @@ export function createGiteaResourceService({
       return labels.flatMap((label) => {
         if (!plainObject(label) || !isString(label.name) || !label.name) return [];
         return [isString(label.color) && label.color ? { name: label.name, color: label.color.replace(/^#/, '') } : { name: label.name }];
-      });
-    },
-
-    async listReviewerCandidates(directory: string, selector?: Selector, remote?: Remote) {
-      const { target } = await network(directory, selector, remote);
-      return (await collaborators(target.project)).flatMap((user) => {
-        const mapped = mapGiteaUser(user, identity);
-        if (!mapped) return [];
-        return [mapped.avatarUrl ? { id: mapped.id, login: mapped.username, avatarUrl: mapped.avatarUrl } : { id: mapped.id, login: mapped.username }];
       });
     },
 
@@ -826,7 +817,7 @@ export function createGiteaResourceService({
       const raw = await readTargetPull(providerTarget);
       const reviewer = (user: Input): user is JsonObject & { id: number; login: string } => hasFields(user) && integer(user.id) && isString(user.login);
       const current = (array(raw.requested_reviewers) ? raw.requested_reviewers : []).filter(reviewer);
-      const known = new Map([...current, ...(await collaborators(repo))].filter(reviewer)
+      const known = new Map([...current, ...(await repoUsers(repo))].filter(reviewer)
         .map((user) => [String(user.id), user.login]));
       const wanted = reviewers.map((id) => {
         const login = known.get(id);

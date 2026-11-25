@@ -1,6 +1,8 @@
 import type { Octokit, RestEndpointMethodTypes } from '@octokit/rest';
 import { z } from 'zod';
-import type { acrossContextSchema, detailCommentSchema, acrossRequestSchema, stateSchema, peopleSchema, toReference, fetchPullStack } from './reference-search.js';
+import type { GitHubReviewerState } from './reviewer-states.js';
+import type { acrossContextSchema, detailCommentSchema, acrossRequestSchema, stateSchema, peopleSchema, toReference } from './reference-search.js';
+import type { fetchPullStack } from './pull-stack.js';
 import type { summarizeCheckContexts } from './pr-summaries.js';
 export type { SummaryRef } from './pr-summaries.js';
 export type { Octokit, RestEndpointMethodTypes } from '@octokit/rest';
@@ -55,14 +57,18 @@ export interface AcrossGroup {
 export interface AcrossPosition { cursor: string | null; offset: number; done: boolean; total: number }
 export interface CommentPermissions { canUpdate?: boolean; canDelete?: boolean }
 export interface EditableText { body?: string; viewerCanUpdate?: boolean }
+export interface ReferenceAssignee { id: string; login: string; avatarUrl?: string | undefined }
 export interface ReferenceDetail extends EditableText {
   number: number; comments: DetailEntry[]; commentTotal: number;
+  writeAccess?: boolean;
+  assignees?: ReferenceAssignee[];
   pull: {
     reviewDecision: string | null; reviewers: { id: string; login?: string; avatarUrl?: string | undefined }[];
+    reviewerStates: GitHubReviewerState[];
     checks: ReturnType<typeof summarizeCheckContexts> | null; additions: number; deletions: number; changedFiles: number;
     commits: { sha: string; headline: string; author: { login: string; avatarUrl: string | undefined } | null; authorName: string | null; committedAt: string | null; url: string | null }[];
     commitTotal: number; stack?: Awaited<ReturnType<typeof fetchPullStack>>;
-  };
+  } | null;
 }
 export interface LookupVariables { number: number; [name: string]: string | number }
 type LocatedReference = Reference & { directory: string };
@@ -114,6 +120,7 @@ export interface GitHubEnvelope {
   enablePullRequestAutoMerge?: unknown;
   disablePullRequestAutoMerge?: unknown;
   pullRequest?: unknown;
+  queueRemoval?: unknown;
   autoMergeRequest?: unknown;
   enabledAt?: unknown;
   repository?: unknown;
@@ -124,6 +131,7 @@ export interface GitHubEnvelope {
   oid?: unknown;
   id?: unknown;
   errors?: unknown;
+  path?: unknown;
   data?: unknown;
   type?: unknown;
   issue?: unknown;

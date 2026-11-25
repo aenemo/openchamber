@@ -185,6 +185,7 @@ export function buildExtensionDescriptor({ guestId, contribution, guest }: {
       cliTransport: false,
       ...tokenPresentation,
       urls: Object.freeze({
+        ...presentation.urls,
         changeRequest: freezeList(presentation.urls.changeRequest),
         issue: freezeList(presentation.urls.issue),
       }),
@@ -194,6 +195,7 @@ export function buildExtensionDescriptor({ guestId, contribution, guest }: {
         authorCanReview: presentation.features.authorCanReview,
         projectUploads: false,
         issueCloseReason: presentation.features.issueCloseReason,
+        issueAssignees: presentation.features.issueAssignees === true,
         issueEdit: presentation.features.issueEdit === true,
         changeRequestEdit: presentation.features.changeRequestEdit === true,
         advancedSearch: false,

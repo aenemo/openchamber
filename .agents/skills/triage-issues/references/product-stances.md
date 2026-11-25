@@ -14,7 +14,8 @@ Sections: Runtimes and backends, Platform scope, Localization, Composer, Session
 - Git is the only version control system. No jj, Lore or other backend (#5605).
 - No live sync with other agent apps.
 - External tools act on OpenChamber through files it watches, such as `settings.json`.
-- An optional server capability never hardcodes a nonstandard endpoint.
+- An optional server capability never hardcodes a nonstandard endpoint, unless the maintainer names the path; the speech-server voice list is the one exception (#6482).
+- A custom speech server's voices are read from `<base URL>/audio/voices` only, the path Kokoro-FastAPI, Speaches and LocalAI share; other servers keep the text field, and Custom… takes any voice. No speaker choice for now (#6482).
 
 ## Platform scope
 
@@ -41,6 +42,7 @@ Sections: Runtimes and backends, Platform scope, Localization, Composer, Session
 
 - No cross-session message bus (#3757). Agents already send to and read other sessions through the `openchamber` tool.
 - Chats are isolated sessions.
+- Chats have their own defaults (Settings → Sessions → Chats: model, thinking level, agent) for every new chat, including chats an agent tool starts and chats from a scheduled task set to use session defaults. An empty field uses New sessions. VS Code reads the shared Chats values and has no Chats section of its own yet (a separate todo, #7226).
 - No built-in Recent section. Users build their own sidebar sections, a Recent one included.
 - In work rows show the project as an icon; the header and Work Status name it. Users give projects distinct icons.
 - Cmd+P shows no session status dot; a separate overview view is the plan. No manual unread mark.
@@ -48,8 +50,10 @@ Sections: Runtimes and backends, Platform scope, Localization, Composer, Session
 - VS Code sessions enter In work only by hand.
 - Notes and todos in project files are opt-in.
 - A session an agent creates with `ownWork` is part of that agent's work: it nests under the agent's session in any folder, takes its done state from it, and nobody talks to it (no question tool, no secret cards, no waiting pages). The user takes one over only from the session's or worktree's menu; opening or writing in it changes nothing. Done on the agent while its workers run asks once: stop them or let them finish. Without `ownWork` a dispatched session stays the user's own root.
-- A subsession in a folder outside every project (a removed worktree, a folder outside the projects) shows under its parent and opens through the parent's folder; its own folder is never registered. A root session there stays hidden.
+- The Scheduled Tasks target picker lists root sessions at rest and finds subagents only by search, each named as its parent's subagent; `ownWork` workers never appear (OPE-374, #6315).
+- A subsession in a folder outside every project (a removed worktree, a folder outside the projects) shows under its parent and opens through the parent's folder; its own folder is never registered. A root session there stays hidden, except one in a linked checkout that Git confirms belongs to a repository inside a registered folder: it shows and opens under that project in Projects, In work and search, unless the user declined its folder trust. A separate clone stays hidden ([#7343](https://github.com/openchamber/openchamber/pull/7343)).
 - The agent's sidebar row shows no running/finished count of its `ownWork` sessions: they keep the row working and sit in its subtree.
+- A lead decides what its `ownWork` sessions ask; it is never a proxy for their questions. Its digest's Needs you holds only the lead's own questions, never a count of its children's pending permissions or questions. A lead stays one session with a brief and a digest: no per-lead task tracker, groups of leads or lead workspaces.
 - Between sessions, an idle session has answered: nothing an agent asked another session for waits on that session's subagents, workflow agents or `ownWork` sessions. Signals for the user and for review keep waiting on them, because the parent wakes again on each result: the "ready" notification, the extensions' `turn-finished` event and automatic review.
 
 ## Agent tools

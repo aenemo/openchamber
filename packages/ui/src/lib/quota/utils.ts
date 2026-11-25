@@ -3,7 +3,7 @@ import { formatDateTimeForPreference, formatTimeForPreference } from '@/lib/time
 import { formatCompactNumber } from '@/lib/numberFormat';
 import type { TimeFormatPreference } from '@/stores/useUIStore';
 import { getCurrentIntlLocale, type I18nKey, type I18nParams } from '@/lib/i18n';
-import type { UsageWindow } from '@/types/quota';
+import type { UsageWindow, UsageWindowValue } from '@/types/quota';
 
 const t = (key: Parameters<typeof formatMessage>[1]) => formatMessage(useI18nStore.getState().dictionary, key);
 
@@ -21,34 +21,68 @@ export const formatPercent = (value: number | null): string => {
   return `${Math.round(value)}%`;
 };
 
+const formatCredits = (value: number): string => (
+  (Math.round(value * 10) / 10).toLocaleString('en-US', { maximumFractionDigits: 1 })
+);
+
+type QuotaDisplayMode = 'usage' | 'remaining';
+
 export const formatQuotaValueLabel = (
-  window: Pick<UsageWindow, 'valueLabel' | 'creditsUsed'>,
+  window: Pick<UsageWindow, 'valueLabel' | 'creditsUsed' | 'credits'>,
   percent: number | null,
   translate: (key: I18nKey, params?: I18nParams) => string,
+  mode: QuotaDisplayMode = 'usage',
 ): string => {
   if (window.creditsUsed !== undefined) {
-    const rounded = Math.round(window.creditsUsed * 10) / 10;
-    const credits = rounded.toLocaleString('en-US', { maximumFractionDigits: 1 });
-    return translate('quota.value.creditsUsed', { credits });
+    return translate('quota.value.creditsUsed', { credits: formatCredits(window.creditsUsed) });
+  }
+  if (window.credits) {
+    const { used, limit, remaining = Math.max(0, Math.round((limit - used) * 1e6) / 1e6) } = window.credits;
+    const shown = mode === 'remaining' ? remaining : used;
+    return `${formatCredits(shown)} / ${formatCredits(limit)}`;
   }
   return window.valueLabel ?? formatPercent(percent);
+};
+
+const formatStructuredQuotaValue = (
+  value: UsageWindowValue,
+  translate: (key: I18nKey, params?: I18nParams) => string,
+): string => {
+  if (value.kind === 'requests') {
+    return translate('quota.value.requests', { count: new Intl.NumberFormat(getCurrentIntlLocale()).format(value.count) });
+  }
+  const money = new Intl.NumberFormat(getCurrentIntlLocale(), { style: 'currency', currency: 'USD' });
+  if (value.spent === null) {
+    const unknown = translate('quota.value.unknown');
+    return value.limit === null
+      ? unknown
+      : translate('settings.usage.consoleBudgets.spentOf', { spent: unknown, limit: money.format(value.limit) });
+  }
+  const spent = money.format(value.spent);
+  return value.limit === null
+    ? translate('quota.value.spent', { spent })
+    : translate('settings.usage.consoleBudgets.spentOf', { spent, limit: money.format(value.limit) });
 };
 
 export const formatQuotaWindowValueLabel = (
   window: UsageWindow,
   percent: number | null,
   translate: (key: I18nKey, params?: I18nParams) => string,
+  mode: QuotaDisplayMode = 'usage',
 ): string => {
   const value = window.value;
-  if (!value) return formatQuotaValueLabel(window, percent, translate);
-  if (value.kind === 'requests') {
-    return translate('quota.value.requests', { count: new Intl.NumberFormat(getCurrentIntlLocale()).format(value.count) });
-  }
-  const money = new Intl.NumberFormat(getCurrentIntlLocale(), { style: 'currency', currency: 'USD' });
-  const spent = money.format(value.spent);
-  return value.limit === null
-    ? translate('quota.value.spent', { spent })
-    : translate('settings.usage.consoleBudgets.spentOf', { spent, limit: money.format(value.limit) });
+  if (!value) return formatQuotaValueLabel(window, percent, translate, mode);
+  return formatStructuredQuotaValue(value, translate);
+};
+
+export const formatQuotaRowValue = (
+  window: Pick<UsageWindow, 'value' | 'valueLabel'>,
+  percent: number | null,
+  translate: (key: I18nKey, params?: I18nParams) => string,
+): string => {
+  if (percent !== null) return `${Math.round(percent)}%`;
+  if (window.value) return formatStructuredQuotaValue(window.value, translate);
+  return window.valueLabel ?? '';
 };
 
 const MINUTE_MS = 60_000;
@@ -120,9 +154,9 @@ export const formatQuotaResetShort = (
 };
 
 export const compactQuotaValueLabel = (label: string): string => (
-  label.replace(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{5,}(?:\.\d+)?/g, (match) => {
+  label.replace(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?/g, (match) => {
     const value = Number(match.replace(/,/g, ''));
-    return Number.isFinite(value) && value >= 10_000 ? formatCompactNumber(value) : match;
+    return Number.isFinite(value) && value >= 1_000 ? formatCompactNumber(value) : match;
   })
 );
 
@@ -146,6 +180,8 @@ export const formatWindowLabel = (label: string): string => {
   if (label === 'weekly') return t('quota.window.weekly');
   if (label === 'daily') return t('quota.window.daily');
   if (label === 'monthly') return t('quota.window.monthly');
+  if (label === 'monthly_total') return t('quota.window.monthlyTotal');
+  if (label === 'monthly_byok') return t('quota.window.monthlyByok');
   if (label === 'credits') return t('quota.window.credits');
   if (label === 'usage') return t('chat.workStatus.section.usage');
   if (label === 'key_limit') return t('quota.window.keyLimit');

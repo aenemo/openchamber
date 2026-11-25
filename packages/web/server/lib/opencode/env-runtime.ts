@@ -5,7 +5,7 @@ import path from 'node:path';
 import { readEnterprisePolicy } from '../enterprise-mode.js';
 import { clearAppImageArgv0FromProcessEnv } from '../inherited-env.js';
 import { mergePathValues } from './path-utils.js';
-import { bundledOpenCodeServerLaunch, isBundledOpenCodeServer, isRetiredBundledCliSetting, resolveBundledOpenCodeServer } from './bundled-opencode-server.js';
+import { bundledOpenCodeServerLaunch, canRunBundledOpenCodeServer, defaultBundledOpenCodeServerDirectories, isBundledOpenCodeServer, isRetiredBundledCliSetting, resolveBundledOpenCodeServer } from './bundled-opencode-server.js';
 import type { SpawnSyncOptionsWithStringEncoding } from 'node:child_process';
 import type { ManagedOpenCodeLaunchSpec } from './lifecycle.js';
 
@@ -355,16 +355,13 @@ export const createOpenCodeEnvRuntime = (deps: OpenCodeEnvDependencies) => {
     return normalized.endsWith(`${path.sep}programs${path.sep}opencode${path.sep}opencode.exe`);
   };
 
-  const bundledOpenCodeServerDirectories = () => [
-    process.env.OPENCHAMBER_BUNDLED_OPENCODE_SERVER_DIR,
-    desktopProcess.resourcesPath ? path.join(desktopProcess.resourcesPath, 'opencode-server') : null,
-  ];
+  const bundledOpenCodeServerDirectories = () => defaultBundledOpenCodeServerDirectories(desktopProcess.resourcesPath);
 
   const isBundledOpenCodePath = (candidate: string | null | undefined) => isBundledOpenCodeServer(candidate, bundledOpenCodeServerDirectories());
 
   const bundledOpenCodeFallback = () => {
     const bundled = resolveBundledOpenCodeServer(bundledOpenCodeServerDirectories());
-    if (!bundled) return null;
+    if (!bundled || !canRunBundledOpenCodeServer(resolveNodeCliPath)) return null;
     clearWslOpencodeResolution();
     state.resolvedOpencodeBinarySource = 'bundled';
     return bundled;
@@ -1208,7 +1205,7 @@ export const createOpenCodeEnvRuntime = (deps: OpenCodeEnvDependencies) => {
     const explicit = [process.env.GIT_BINARY, process.env.OPENCHAMBER_GIT_BINARY]
       .map((value) => (isString(value) ? value.trim() : ''))
       .filter(Boolean);
-    return explicit.find((candidate) => isExecutable(candidate)) || null;
+    return explicit.map((candidate) => (/[\\/]/.test(candidate) && !path.win32.isAbsolute(candidate) ? path.resolve(candidate) : candidate)).find((candidate) => isExecutable(candidate)) || null;
   };
 
   const resolveGitBinaryForSpawn = () => {

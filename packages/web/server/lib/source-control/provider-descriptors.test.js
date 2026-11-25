@@ -129,8 +129,14 @@ describe('source control provider descriptors', () => {
       delete features.changeRequestEdit;
       // Nor the search-box qualifiers, newer still.
       delete features.advancedSearch;
+      // Nor the assignee and close reason writes.
+      delete features.issueAssignees;
+      delete features.issueCloseReasonWrite;
       // Nor the comment edit and delete routes.
       delete features.commentEdit;
+      // GitHub served no uploads before this change.
+      delete features.absoluteProjectUploads;
+      if (descriptor.id === 'github') features.projectUploads = false;
       delete urls.discussion;
       return { ...descriptor, features, urls };
     };

@@ -1475,6 +1475,12 @@ describe('contributes.sourceControl', () => {
   }));
   const withSourceControl = <T,>(patch: T) => manifest({ sourceControl: { ...sourceControl, ...patch } });
 
+  test('an optional URL conversion path uses the existing service path grammar', () => {
+    const presentation = { ...sourceControl.presentation, urls: { ...sourceControl.presentation.urls, resolve: '/handle-url' } };
+    expect(withSourceControl({ presentation })).toMatchObject({ ok: true, manifest: { contributes: { sourceControl: { presentation } } } });
+    expect(withSourceControl({ presentation: { ...presentation, urls: { ...presentation.urls, resolve: 'https://other.example.test/handle-url' } } }).ok).toBe(false);
+  });
+
   test('accepts service login alone or beside a token, and requires at least one', () => {
     const login = { kind: 'service', hint: 'Run teahouse auth login on the OpenChamber server' };
     const result = withSourceControl({ token: undefined, login });
@@ -1500,8 +1506,25 @@ describe('contributes.sourceControl', () => {
       ci: false, comments: false, commentEdit: false, reviews: false, state: false, labels: false, reviewers: false,
       changeRequestPatch: false, liveSummaries: true,
     });
-    expect(parsed?.presentation.features).toEqual({ authorCanReview: false, issueCloseReason: false });
+    expect(parsed?.presentation.features).toEqual({ authorCanReview: false, issueCloseReason: false, issueAssignees: false });
     expect(parsed && toPublicSourceControl(parsed)).toEqual({ label: 'Teahouse', defaultInstances: ['https://tea.example.com'], custom: true });
+  });
+
+  test('issueAssignees is off unless declared, and a non-boolean reads as off', () => {
+    const declared = withSourceControl({
+      presentation: { ...sourceControl.presentation, features: { issueAssignees: true } },
+    });
+    expect(declared.ok).toBe(true);
+    if (declared.ok) {
+      expect(declared.manifest.contributes.sourceControl?.presentation.features).toMatchObject({ issueAssignees: true });
+    }
+    const degraded = withSourceControl({
+      presentation: { ...sourceControl.presentation, features: { issueAssignees: 'yes' } },
+    });
+    expect(degraded.ok).toBe(true);
+    if (degraded.ok) {
+      expect(degraded.manifest.contributes.sourceControl?.presentation.features).toMatchObject({ issueAssignees: false });
+    }
   });
 
   test('the role and the contribution come together', () => {
@@ -1565,7 +1588,7 @@ describe('contributes.sourceControl', () => {
     expect(parsed?.terminology.changeRequest).toBe('change');
     expect(parsed?.capabilities).toMatchObject({ merge: { methods: ['submit'] }, reviewModel: 'votes', revisions: true });
     expect(parsed?.token).toMatchObject({ scheme: 'basic', username: true });
-    expect(parsed?.presentation.features).toEqual({ authorCanReview: false, issueCloseReason: false, submitRequirements: true });
+    expect(parsed?.presentation.features).toEqual({ authorCanReview: false, issueCloseReason: false, issueAssignees: false, submitRequirements: true });
     expect(withSourceControl({ capabilities: { ...sourceControl.capabilities, reviewModel: 'stars' } })).toMatchObject({ ok: false, code: 'invalid-service' });
     expect(withSourceControl({ terminology: { changeRequest: 'patch', ci: 'checks' } })).toMatchObject({ ok: false, code: 'invalid-service' });
   });

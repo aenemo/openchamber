@@ -3,10 +3,12 @@ import React from 'react';
 import { focusChatInput } from '@/components/chat/composer/editor/dom';
 import { toast } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';
-import { useInlineCommentDraftStore } from '@/stores/useInlineCommentDraftStore';
+import { createInlineCommentDraftId, useInlineCommentDraftStore, type InlineCommentDraftTarget } from '@/stores/useInlineCommentDraftStore';
 import { useInputStore } from '@/sync/input-store';
 import { readComposerAddress } from '@/hooks/useComposerAddress';
 import { formatBrowserAnnotationPrompt } from '@/lib/browser/annotationPrompt';
+import { saveAnnotationScreenshot } from '@/lib/browser/annotationScreenshotStore';
+import type { AttachedFile } from '@/stores/types/sessionTypes';
 import type { AnnotationSessionResult } from '@/lib/browser/annotationSession';
 import type { BrowserAnnotationOverlayLabels } from '@/lib/browser/annotationOverlay';
 
@@ -15,24 +17,29 @@ export const useAnnotationAttach = (directory: string, intro?: string) => {
   const addInlineCommentDraft = useInlineCommentDraftStore((state) => state.addDraft);
   const addAttachedFile = useInputStore((state) => state.addAttachedFile);
 
-  return React.useCallback(async (result: AnnotationSessionResult): Promise<void> => {
+  return React.useCallback(async (result: AnnotationSessionResult, wanted: () => boolean = () => true): Promise<boolean> => {
     const { inline: target, attachments } = readComposerAddress(directory);
     if (!target) {
       toast.error(t('contextPanel.browser.annotate.noSession'));
-      return;
+      return false;
     }
 
-    let screenshot: string | undefined;
+    let attachedScreenshot: AttachedFile | undefined;
     if (result.screenshot) {
       try {
-        await addAttachedFile(result.screenshot, attachments, ([landed]) => { screenshot = landed?.filename; });
+        await addAttachedFile(result.screenshot, attachments, ([landed]) => { attachedScreenshot = landed; });
       } catch {
-        screenshot = undefined;
+        attachedScreenshot = undefined;
       }
     }
+    const screenshot = attachedScreenshot?.filename;
     const screenshotAttached = screenshot !== undefined;
+    const draftId = createInlineCommentDraftId();
+    if (attachedScreenshot) await saveAnnotationScreenshot(draftId, attachedScreenshot);
 
+    if (!wanted()) return false;
     addInlineCommentDraft(target, {
+      id: draftId,
       source: 'preview-annotation',
       fileLabel: result.payload.pageUrl || result.payload.pageTitle || 'browser',
       startLine: 1,
@@ -49,7 +56,35 @@ export const useAnnotationAttach = (directory: string, intro?: string) => {
 
     toast.success(t('contextPanel.browser.annotate.attached'));
     requestAnimationFrame(focusChatInput);
+    return true;
   }, [addAttachedFile, addInlineCommentDraft, directory, intro, t]);
+};
+
+export const useAnnotationTextKeeper = () => {
+  const { t } = useI18n();
+  const addInlineCommentDraft = useInlineCommentDraftStore((state) => state.addDraft);
+
+  return React.useCallback((target: InlineCommentDraftTarget, spoken: { text: string; url: string }): boolean => {
+    const kept = addInlineCommentDraft(target, {
+      source: 'preview-annotation',
+      fileLabel: spoken.url || 'browser',
+      startLine: 1,
+      endLine: 1,
+      code: formatBrowserAnnotationPrompt({
+        payload: {
+          id: 'dictated', pageUrl: spoken.url, pageTitle: '',
+          viewport: { width: window.innerWidth, height: window.innerHeight }, devicePixelRatio: window.devicePixelRatio,
+          comment: '', elements: [], regions: [], strokes: [],
+        },
+        screenshotAttached: false,
+        intro: t('contextPanel.browser.annotate.intro'),
+      }),
+      language: 'markdown',
+      text: spoken.text.trim(),
+    }, { written: true });
+    if (kept) toast.success(t('contextPanel.browser.annotate.attached'));
+    return kept !== null;
+  }, [addInlineCommentDraft, t]);
 };
 
 export const useAnnotationOverlayLabels = (): BrowserAnnotationOverlayLabels => {

@@ -1,4 +1,5 @@
 import React from 'react';
+import { usePendingSharedDraftContent } from '@/hooks/usePendingSharedDraftContent';
 import { useI18n } from '@/lib/i18n';
 import type { ChatInputProps } from './composer/input/chatInputProps';
 import { createComposerKeyHandler } from './composer/input/createComposerKeyHandler';
@@ -96,13 +97,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const referencePickerState = useComposerReferencePickerState();
     const mobileShell = useComposerMobileShell({
         preferences, expansion, referencePickerState, editorState, mobilePanels, historySearchState,
-        dropState,
+        dropState, largePasteState,
     });
     const referenceDrafts = useComposerReferenceDrafts({ draftText, sessionScope });
     const queueState = useComposerQueueState({ sessionScope });
     const inlineContext = useComposerInlineContext({ sessionScope, column, preferences });
     const draftHistory = useComposerDraftHistory({
-        sessionScope, inlineContext, historySearchState, draftText, editorState, column,
+        dictationState, sessionScope, inlineContext, historySearchState, draftText, editorState, column,
         autocompleteState,
     });
     const sessionLifecycle = useComposerSessionLifecycle({
@@ -119,8 +120,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         mobilePanels, referencePickerState, language, sessionScope, referenceDrafts,
     });
     const sending = useComposerSending({
-        inlineContext, attachmentWork, i18n, draftText, editorState, sendAvailability, sessionScope,
-        queueState, language, selection, mentionAttachments, props, referenceDrafts, preferences,
+        inlineContext, attachmentWork, largePasteState, i18n, draftText, editorState, sendAvailability,
+        sessionScope, queueState, language, selection, mentionAttachments, props, referenceDrafts, preferences,
         historySearchState, column, parallelRun, sessionLifecycle, expansion, permissionSettings,
         runtime, draftHistory,
     });
@@ -129,7 +130,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         queueState, queueActions: sending, editorState, draftText,
     });
     const dictation = useComposerDictation({
-        draftText, i18n, dictationState, editorState, draftHistory, sendHandlers: sending,
+        draftText, i18n, dictationState, editorState, draftHistory, sendHandlers: sending, sessionScope,
     });
     useComposerExternalSubmits({ draftText, column, sendHandlers: sending, sendAvailability, sessionScope, submission: sending, sendActions, selection });
     const editorActions = useComposerEditorActions({
@@ -139,6 +140,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     });
     const fileIntake = useComposerFileIntake({
         editorState, draftText, i18n, attachmentWork, editorActions, selection, sessionScope,
+        largePasteState, mobileShell,
+    });
+    usePendingSharedDraftContent({
+        composerText: draftText.composerText,
+        setMessage: draftText.setMessage,
+        chatDraftIdentity: sessionScope.chatDraftIdentity,
+        attachSharedFiles: fileIntake.attachSharedFiles,
+        restoreDraft: draftHistory.restoreDraft,
     });
     const paste = useComposerPaste({
         sessionScope, language, editorState, draftText, largePasteState, attachmentWork, i18n,
@@ -164,11 +173,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         sessionScope, runtime, mobilePanels, preferences, expansion, props,
     });
     const mobileActions = useComposerMobileActions({
-        dictationState, autocompleteState, largePasteState, historySearchState, editorState, draftText,
+        dictation, dictationState, autocompleteState, largePasteState, historySearchState, editorState, draftText,
         mobileShell, preferences, sessionScope, inlineContext, draftHistory,
     });
     const rows = useComposerRows({
-        draftText, editorState, i18n, preferences, mobileShell, inlineContext, referenceActions,
+        props, draftText, editorState, i18n, preferences, mobileShell, inlineContext, referenceActions,
         sendAvailability, sessionScope, queueState, draftTarget, selection, queueActions: sending,
         sessionLifecycle, editorActions, referencePicker,
     });

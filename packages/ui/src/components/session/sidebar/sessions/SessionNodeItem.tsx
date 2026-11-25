@@ -10,6 +10,7 @@ import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { isSessionPinned } from '@/lib/sessionPins';
+import { isLeadSession } from '@/lib/sessionLead';
 import { getSessionGoal } from '@/lib/sessionGoalMetadata';
 import { getCurrentSessionAssist } from '@/lib/sessionAssistMetadata';
 import { openGuestSurface } from '@/lib/guests/open-surface';
@@ -19,6 +20,7 @@ import { pluginModeFromId } from '@/lib/surfaces/modes';
 import { resolveEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { getSessionActivityTime } from '@/sync/session-ordering';
 import { streamPerfCount } from '@/stores/utils/streamDebug';
+import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { DraggableSessionRow } from '../folders/sessionFolderDnd';
 import { listedChildren } from '../listedChildren';
@@ -26,7 +28,7 @@ import { isPinnedZoneRowKey, sessionExpansionKey } from '../sessionSidebarRowMod
 import { formatSessionCompactDateLabel, formatSessionDateLabel } from '../utils';
 import { DirectoryActionIndicator } from './DirectoryActionIndicator';
 import { GuestRowMarks } from './GuestRowMarks';
-import { SessionLeadToggle, SessionTreeChevron } from './SessionRowChevrons';
+import { SessionLeadSlot, SessionLeadToggle, SessionTreeChevron } from './SessionRowChevrons';
 import { SessionRowActions } from './SessionRowActions';
 import { SessionRowPrBadge } from './SessionRowPrBadge';
 import { SessionRowRename } from './SessionRowRename';
@@ -45,6 +47,7 @@ import { useSessionRowMenus } from './useSessionRowMenus';
 import { useSessionRowPlace } from './useSessionRowPlace';
 import { useSessionRowRename } from './useSessionRowRename';
 import { useSessionRowWork } from './useSessionRowWork';
+import { useLiveSessionNode } from './useLiveSessionNode';
 
 export type { SessionNodeItemProps } from './sessionNodeItemProps';
 
@@ -52,7 +55,7 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
   streamPerfCount('ui.sidebar_session_node.render');
   const { t } = useI18n();
   const {
-    node,
+    node: structuralNode,
     depth = 0,
     ownsWork,
     groupDirectory,
@@ -93,6 +96,7 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
   } = props;
   const isVSCode = React.useMemo(() => isVSCodeRuntime(), []);
   const rowTooltip = useScrollDismissedTooltip();
+  const node = useLiveSessionNode(structuralNode);
   const session = node.session;
   const { isOneLineTimelineRow, isTwoLineRow, isTimelineRow, isZoneRow } = resolveSessionRowLines(renderContext, detailed);
   const hidePinnedMarker = rowKey !== undefined && isPinnedZoneRowKey(rowKey);
@@ -126,7 +130,8 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
   const contextMenuInstanceKey = rowKey ? `session-context:${rowKey}` : null;
   const sessionGoal = getSessionGoal(session);
   const sessionTitle = session.title || t('sessions.sidebar.session.untitled');
-  const hasChildren = listedChildren(node).length > 0;
+  const showSubagentSessions = useSessionDisplayStore((state) => state.showSubagentSessions);
+  const hasChildren = listedChildren(node, showSubagentSessions).length > 0;
   const isPinnedSession = isSessionPinned(pinnedSessionIds, sessionDirectory, session.id);
   const expansionKey = legacyContextKey;
   const isExpanded = expandedParents.has(expansionKey);
@@ -144,7 +149,7 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
     showStatusMarker,
     showActivityDuration,
     waitingOnUser,
-  } = useSessionRowLiveState({ node, sessionDirectory, isExpanded, isActive, timelineBadgeSessionScopes });
+  } = useSessionRowLiveState({ node, sessionDirectory, isExpanded, showSubagentSessions, isActive, timelineBadgeSessionScopes });
   const { canTrackWork, isInWork, showDoneHint, toggleWork } = useSessionRowWork({
     node,
     ownsWork,
@@ -254,7 +259,12 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
     ? <SessionLeadToggle expanded={isExpanded} alwaysShowActions={alwaysShowActions} onToggle={toggleSubsessions} />
     : null;
   const leadIconClassName = alwaysShowActions ? 'opacity-0' : 'group-hover:opacity-0 group-has-[:focus-visible]:opacity-0';
-  const treeSlot = isTwoLineRow ? null : treeChevron ?? <span aria-hidden className="h-3.5 w-3.5 flex-shrink-0" />;
+  const isLead = isLeadSession(session);
+  const treeSlot = isTwoLineRow
+    ? null
+    : isLead
+      ? <SessionLeadSlot chevron={treeChevron} alwaysShowActions={alwaysShowActions} />
+      : treeChevron ?? <span aria-hidden className="h-3.5 w-3.5 flex-shrink-0" />;
 
   const streamingIndicator = isZombie
     ? <Icon name="error-warning" className="h-4 w-4 text-status-warning" />
@@ -312,7 +322,10 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
       prBadge={timelinePrBadge}
       zombieIndicator={isTimelineRow ? streamingIndicator : null}
       goal={goalMark}
-      marks={guestMarks.length > 0 ? <GuestRowMarks marks={guestMarks} onOpen={openGuestMark} /> : null}
+      marks={guestMarks.length > 0 || (isTwoLineRow && isLead) ? <>
+        {isTwoLineRow && isLead ? <SessionLeadSlot chevron={null} alwaysShowActions={alwaysShowActions} /> : null}
+        {guestMarks.length > 0 ? <GuestRowMarks marks={guestMarks} onOpen={openGuestMark} /> : null}
+      </> : null}
       badges={rowBadges}
       doneHint={showDoneHint ? <DoneHintMark /> : null}
       metaPaddingClass={isTimelineRow && alwaysShowActions

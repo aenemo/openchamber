@@ -231,7 +231,7 @@ export const registerOpenCodeRoutes = <Settings extends { opencodeBinary?: unkno
           headers: { Accept: 'application/json', ...getOpenCodeAuthHeaders() },
           signal: AbortSignal.timeout(OPENCODE_INFO_TIMEOUT_MS),
         }),
-        fetchLatestOpenCodeVersion(),
+        fetchLatestOpenCodeVersion().catch(() => null),
       ]);
       const rawInfo: unknown = await healthResponse.json().catch(() => null);
       const info = routeInputFields(rawInfo);
@@ -395,6 +395,7 @@ export const registerOpenCodeRoutes = <Settings extends { opencodeBinary?: unkno
         providerId,
         sources: sources.sources,
         config: sources.config,
+        inheritedCanonical: sources.inheritedCanonical,
       });
     } catch (error) {
       console.error('Failed to get provider sources:', error);
@@ -415,8 +416,8 @@ export const registerOpenCodeRoutes = <Settings extends { opencodeBinary?: unkno
       : next()
   ));
 
-  app.use((req, res, next) => {
-    const refusal = vcsInitRefusal(req.method ?? '', req.originalUrl, req.headers);
+  app.use(async (req, res, next) => {
+    const refusal = await vcsInitRefusal(req.method ?? '', req.originalUrl, req.headers);
     return refusal ? res.status(400).json(vcsInitRefusalBody(refusal)) : next();
   });
 
