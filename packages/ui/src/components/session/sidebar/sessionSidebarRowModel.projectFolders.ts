@@ -21,8 +21,6 @@ type ProjectFolderRowsHost = {
   args: {
     showOnlyMainWorkspace: boolean;
     singleProjectMode: boolean;
-    projectsCaption?: boolean | undefined;
-    projectsCaptionAtTop?: boolean | undefined;
     collapsedProjects: ReadonlySet<string>;
     collapsedActivities: ReadonlySet<string>;
     collapsedProjectFolders?: ReadonlyArray<string> | ReadonlySet<string> | undefined;

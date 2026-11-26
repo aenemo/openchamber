@@ -1071,7 +1071,9 @@ export const buildSessionSidebarRowModel = (args: SessionSidebarRowModelArgs): S
       push({ kind: 'empty', key: `caption:${caption.key}:empty`, estimateSize: STATUS_ESTIMATE, emptyKind: 'section' });
       return;
     }
-    if (!captionHidden && sections.length > 0 && appendProjectsCaption(folderRowHost, caption)) return;
+    if (!captionHidden && sections.length > 0) {
+      if (appendProjectsCaption(folderRowHost, caption)) return;
+    }
     if (appendMaybeFolderedProjectSections(folderRowHost, projectSections, caption)) return;
     for (const section of projectSections) {
       appendProjectSectionRows(folderRowHost, section);
